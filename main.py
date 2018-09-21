@@ -4,7 +4,7 @@ import os
 import argparse
 import time
 import random
-from model import BiLSTM_CRF
+from model import BiLSTM_CRF, Stacked_BiLSTM_CRF
 from utils import str2bool, get_logger, get_entity
 from data import read_corpus, read_dictionary, tag2label, random_embedding
 
@@ -35,7 +35,9 @@ parser.add_argument('--embedding_dim', type=int, default=300, help='random init 
 parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle training data before each epoch')
 parser.add_argument('--mode', type=str, default='demo', help='train/test/demo')
 parser.add_argument('--demo_model', type=str, default='1521112368', help='model for test and demo')
-parser.add_argument('--model_name', type=str, default='baseline', help='A string for distinguishing models')
+parser.add_argument('--num_rnn_layer', type=int, default=1,
+                    help='Number of LSTM cells to be stacked in biLSTM structure.')
+parser.add_argument('--output_path', type=str, default=None, help='Directory for saving model, summaries, etc..')
 args = parser.parse_args()
 
 
@@ -60,7 +62,10 @@ if args.mode != 'demo':
 ## paths setting
 paths = {}
 timestamp = str(int(time.time())) if args.mode == 'train' else args.demo_model
-output_path = os.path.join('.', "{}_{}".format(args.train_data, args.model_name), timestamp)
+if args.output_path is None:
+    output_path = os.path.join('.', "data_path_baseline", '1521112368') # Basline model
+else:
+    output_path = os.path.normpath(args.output_path)
 if not os.path.exists(output_path):
     os.makedirs(output_path)
 summary_path = os.path.join(output_path, "summaries")
@@ -83,7 +88,10 @@ get_logger(log_path).info(str(args))
 
 ## training model
 if args.mode == 'train':
-    model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    if args.num_rnn_layer > 1:
+        model = Stacked_BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    else:
+        model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
 
     ## hyperparameters-tuning, split train/dev
@@ -101,7 +109,10 @@ elif args.mode == 'test':
     ckpt_file = tf.train.latest_checkpoint(model_path)
     print(ckpt_file)
     paths['model_path'] = ckpt_file
-    model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    if args.num_rnn_layer > 1:
+        model = Stacked_BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    else:
+        model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
     print("test data: {}".format(test_size))
     model.test(test_data)
@@ -111,7 +122,10 @@ elif args.mode == 'demo':
     ckpt_file = tf.train.latest_checkpoint(model_path)
     print(ckpt_file)
     paths['model_path'] = ckpt_file
-    model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    if args.num_rnn_layer > 1:
+        model = Stacked_BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    else:
+        model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
     saver = tf.train.Saver()
     with tf.Session(config=config) as sess:

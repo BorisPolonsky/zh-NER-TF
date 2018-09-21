@@ -3,7 +3,7 @@ import os
 import time
 import sys
 import tensorflow as tf
-from tensorflow.contrib.rnn import LSTMCell
+from tensorflow.nn.rnn_cell import LSTMCell
 from tensorflow.contrib.crf import crf_log_likelihood
 from tensorflow.contrib.crf import viterbi_decode
 from data import pad_sequences, batch_yield
@@ -313,3 +313,45 @@ class BiLSTM_CRF(object):
         for _ in conlleval(model_predict, label_path, metric_path):
             self.logger.info(_)
 
+
+class Stacked_BiLSTM_CRF(BiLSTM_CRF):
+    def __init__(self, args, embeddings, tag2label, vocab, paths, config):
+        super().__init__(args, embeddings, tag2label, vocab, paths, config)
+        self._layer_num = args.num_rnn_layer
+
+    def biLSTM_layer_op(self):
+        """
+        Bi-(Stacked)LSTM layer
+        :return:
+        """
+        with tf.variable_scope("bi-rnn"):
+            cell_fw = tf.nn.rnn_cell.MultiRNNCell([LSTMCell(self.hidden_dim) for _ in range(self.layer_num)])
+            cell_bw = tf.nn.rnn_cell.MultiRNNCell([LSTMCell(self.hidden_dim) for _ in range(self.layer_num)])
+            (output_fw_seq, output_bw_seq), _ = tf.nn.bidirectional_dynamic_rnn(
+                cell_fw=cell_fw,
+                cell_bw=cell_bw,
+                inputs=self.word_embeddings,
+                sequence_length=self.sequence_lengths,
+                dtype=tf.float32)
+            output = tf.concat([output_fw_seq, output_bw_seq], axis=-1)
+            output = tf.nn.dropout(output, self.dropout_pl)
+
+        with tf.variable_scope("proj"):
+            W = tf.get_variable(name="W",
+                                shape=[2 * self.hidden_dim, self.num_tags],
+                                initializer=tf.contrib.layers.xavier_initializer(),
+                                dtype=tf.float32)
+
+            b = tf.get_variable(name="b",
+                                shape=[self.num_tags],
+                                initializer=tf.zeros_initializer(),
+                                dtype=tf.float32)
+
+            s = tf.shape(output)
+            output = tf.reshape(output, [-1, 2 * self.hidden_dim])
+            pred = tf.matmul(output, W) + b
+            self.logits = tf.reshape(pred, [-1, s[1], self.num_tags])
+
+    @property
+    def layer_num(self):
+        return self._layer_num
