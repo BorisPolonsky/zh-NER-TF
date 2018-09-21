@@ -35,6 +35,7 @@ parser.add_argument('--embedding_dim', type=int, default=300, help='random init 
 parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle training data before each epoch')
 parser.add_argument('--mode', type=str, default='demo', help='train/test/demo')
 parser.add_argument('--demo_model', type=str, default='1521112368', help='model for test and demo')
+parser.add_argument('--model_name', type=str, default='baseline', help='A string for distinguishing models')
 args = parser.parse_args()
 
 
@@ -59,7 +60,7 @@ if args.mode != 'demo':
 ## paths setting
 paths = {}
 timestamp = str(int(time.time())) if args.mode == 'train' else args.demo_model
-output_path = os.path.join('.', args.train_data+"_save", timestamp)
+output_path = os.path.join('.', "{}_{}".format(args.train_data, args.model_name), timestamp)
 if not os.path.exists(output_path):
     os.makedirs(output_path)
 summary_path = os.path.join(output_path, "summaries")
