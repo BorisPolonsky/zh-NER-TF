@@ -45,7 +45,7 @@ def vocab_build(vocab_path, corpus_path, min_count):
         for word in sent_:
             if word.isdigit():
                 word = '<NUM>'
-            elif ('\u0041' <= word <='\u005a') or ('\u0061' <= word <='\u007a'):
+            elif ('\u0041' <= word <= '\u005a') or ('\u0061' <= word <= '\u007a'):
                 word = '<ENG>'
             if word not in word2id:
                 word2id[word] = [len(word2id)+1, 1]
@@ -121,7 +121,7 @@ def pad_sequences(sequences, pad_mark=0):
     :param pad_mark:
     :return:
     """
-    max_len = max(map(lambda x : len(x), sequences))
+    max_len = max(map(lambda x: len(x), sequences))
     seq_list, seq_len_list = [], []
     for seq in sequences:
         seq = list(seq)

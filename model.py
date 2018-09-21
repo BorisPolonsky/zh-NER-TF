@@ -1,5 +1,7 @@
 import numpy as np
-import os, time, sys
+import os
+import time
+import sys
 import tensorflow as tf
 from tensorflow.contrib.rnn import LSTMCell
 from tensorflow.contrib.crf import crf_log_likelihood
@@ -57,7 +59,7 @@ class BiLSTM_CRF(object):
             word_embeddings = tf.nn.embedding_lookup(params=_word_embeddings,
                                                      ids=self.word_ids,
                                                      name="word_embeddings")
-        self.word_embeddings =  tf.nn.dropout(word_embeddings, self.dropout_pl)
+        self.word_embeddings = tf.nn.dropout(word_embeddings, self.dropout_pl)
 
     def biLSTM_layer_op(self):
         with tf.variable_scope("bi-lstm"):
@@ -202,7 +204,7 @@ class BiLSTM_CRF(object):
         batches = batch_yield(train, self.batch_size, self.vocab, self.tag2label, shuffle=self.shuffle)
         for step, (seqs, labels) in enumerate(batches):
 
-            sys.stdout.write(' processing: {} batch / {} batches.'.format(step + 1, num_batches) + '\r')
+            sys.stdout.write(' processing: {} batch / {} batches.\r'.format(step + 1, num_batches))
             step_num = epoch * num_batches + step + 1
             feed_dict, _ = self.get_feed_dict(seqs, labels, self.lr, self.dropout_keep_prob)
             _, loss_train, summary, step_num_ = sess.run([self.train_op, self.loss, self.merged, self.global_step],
@@ -298,7 +300,7 @@ class BiLSTM_CRF(object):
         for label_, (sent, tag) in zip(label_list, data):
             tag_ = [label2tag[label__] for label__ in label_]
             sent_res = []
-            if  len(label_) != len(sent):
+            if len(label_) != len(sent):
                 print(sent)
                 print(len(label_))
                 print(tag)
