@@ -3,7 +3,7 @@ import os
 import time
 import sys
 import tensorflow as tf
-from tensorflow.nn.rnn_cell import LSTMCell
+from tensorflow.nn.rnn_cell import LSTMCell, DropoutWrapper
 from tensorflow.contrib.crf import crf_log_likelihood
 from tensorflow.contrib.crf import viterbi_decode
 from data import pad_sequences, batch_yield
@@ -314,7 +314,7 @@ class BiLSTM_CRF(object):
             self.logger.info(_)
 
 
-class Stacked_BiLSTM_CRF(BiLSTM_CRF):
+class BiDirectionalStackedLSTM_CRF(BiLSTM_CRF):
     def __init__(self, args, embeddings, tag2label, vocab, paths, config):
         super().__init__(args, embeddings, tag2label, vocab, paths, config)
         self._layer_num = args.num_rnn_layer
@@ -324,9 +324,12 @@ class Stacked_BiLSTM_CRF(BiLSTM_CRF):
         Bi-(Stacked)LSTM layer
         :return:
         """
-        with tf.variable_scope("bi-rnn"):
-            cell_fw = tf.nn.rnn_cell.MultiRNNCell([LSTMCell(self.hidden_dim) for _ in range(self.layer_num)])
-            cell_bw = tf.nn.rnn_cell.MultiRNNCell([LSTMCell(self.hidden_dim) for _ in range(self.layer_num)])
+        def inner_cells():
+            return [DropoutWrapper(LSTMCell(self.hidden_dim), output_keep_prob=self.dropout_pl)
+                    for _ in range(self.layer_num)]
+        with tf.variable_scope("bi-stacked-lstm"):
+            cell_fw = tf.nn.rnn_cell.MultiRNNCell(inner_cells())
+            cell_bw = tf.nn.rnn_cell.MultiRNNCell(inner_cells())
             (output_fw_seq, output_bw_seq), _ = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw=cell_fw,
                 cell_bw=cell_bw,
@@ -334,7 +337,7 @@ class Stacked_BiLSTM_CRF(BiLSTM_CRF):
                 sequence_length=self.sequence_lengths,
                 dtype=tf.float32)
             output = tf.concat([output_fw_seq, output_bw_seq], axis=-1)
-            output = tf.nn.dropout(output, self.dropout_pl)
+            # output = tf.nn.dropout(output, self.dropout_pl)
 
         with tf.variable_scope("proj"):
             W = tf.get_variable(name="W",

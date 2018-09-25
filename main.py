@@ -4,7 +4,7 @@ import os
 import argparse
 import time
 import random
-from model import BiLSTM_CRF, Stacked_BiLSTM_CRF
+from model import BiLSTM_CRF, BiDirectionalStackedLSTM_CRF
 from utils import str2bool, get_logger, get_entity
 from data import read_corpus, read_dictionary, tag2label, random_embedding
 
@@ -61,7 +61,6 @@ if args.mode != 'demo':
 
 ## paths setting
 paths = {}
-timestamp = str(int(time.time())) if args.mode == 'train' else args.demo_model
 if args.output_path is None:
     output_path = os.path.join('.', "data_path_baseline", '1521112368') # Basline model
 else:
@@ -89,7 +88,7 @@ get_logger(log_path).info(str(args))
 ## training model
 if args.mode == 'train':
     if args.num_rnn_layer > 1:
-        model = Stacked_BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+        model = BiDirectionalStackedLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     else:
         model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
@@ -110,7 +109,7 @@ elif args.mode == 'test':
     print(ckpt_file)
     paths['model_path'] = ckpt_file
     if args.num_rnn_layer > 1:
-        model = Stacked_BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+        model = BiDirectionalStackedLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     else:
         model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
@@ -123,7 +122,7 @@ elif args.mode == 'demo':
     print(ckpt_file)
     paths['model_path'] = ckpt_file
     if args.num_rnn_layer > 1:
-        model = Stacked_BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+        model = BiDirectionalStackedLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     else:
         model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
