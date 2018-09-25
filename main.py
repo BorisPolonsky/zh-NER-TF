@@ -4,7 +4,7 @@ import os
 import argparse
 import time
 import random
-from model import BiLSTM_CRF, BiDirectionalStackedLSTM_CRF
+from model import BiLSTM_CRF, BiDirectionalStackedLSTM_CRF, VariationalBiRNN_CRF
 from utils import str2bool, get_logger, get_entity
 from data import read_corpus, read_dictionary, tag2label, random_embedding
 
@@ -36,8 +36,10 @@ parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle trai
 parser.add_argument('--mode', type=str, default='demo', help='train/test/demo')
 parser.add_argument('--demo_model', type=str, default='1521112368', help='model for test and demo')
 parser.add_argument('--num_rnn_layer', type=int, default=1,
-                    help='Number of LSTM cells to be stacked in biLSTM structure.')
+                    help='Number of RNN cells to be stacked.')
 parser.add_argument('--output_path', type=str, default=None, help='Directory for saving model, summaries, etc..')
+parser.add_argument('--model_type', type=str, default="bi-lstm-crf",
+                    help='bi-lstm-crf/bi-stacked-lstm-crf/variational-bi-lstm-crf')
 args = parser.parse_args()
 
 
@@ -85,14 +87,15 @@ paths['log_path'] = log_path
 get_logger(log_path).info(str(args))
 
 
+## Model selection
+model_constructor = {"bi-lstm-crf": BiLSTM_CRF,
+                     "bi-stacked-lstm-crf": BiDirectionalStackedLSTM_CRF,
+                     "variational-bi-lstm-crf": VariationalBiRNN_CRF}[args.model_type]
+model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
+model.build_graph()
+
 ## training model
 if args.mode == 'train':
-    if args.num_rnn_layer > 1:
-        model = BiDirectionalStackedLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
-    else:
-        model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
-    model.build_graph()
-
     ## hyperparameters-tuning, split train/dev
     # dev_data = train_data[:5000]; dev_size = len(dev_data)
     # train_data = train_data[5000:]; train_size = len(train_data)
@@ -108,11 +111,6 @@ elif args.mode == 'test':
     ckpt_file = tf.train.latest_checkpoint(model_path)
     print(ckpt_file)
     paths['model_path'] = ckpt_file
-    if args.num_rnn_layer > 1:
-        model = BiDirectionalStackedLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
-    else:
-        model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
-    model.build_graph()
     print("test data: {}".format(test_size))
     model.test(test_data)
 
@@ -121,11 +119,6 @@ elif args.mode == 'demo':
     ckpt_file = tf.train.latest_checkpoint(model_path)
     print(ckpt_file)
     paths['model_path'] = ckpt_file
-    if args.num_rnn_layer > 1:
-        model = BiDirectionalStackedLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
-    else:
-        model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
-    model.build_graph()
     saver = tf.train.Saver()
     with tf.Session(config=config) as sess:
         print('============= demo =============')

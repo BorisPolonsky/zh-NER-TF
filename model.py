@@ -3,7 +3,7 @@ import os
 import time
 import sys
 import tensorflow as tf
-from tensorflow.nn.rnn_cell import LSTMCell, DropoutWrapper
+from tensorflow.nn.rnn_cell import GRUCell, LSTMCell, DropoutWrapper
 from tensorflow.contrib.crf import crf_log_likelihood
 from tensorflow.contrib.crf import viterbi_decode
 from data import pad_sequences, batch_yield
@@ -358,3 +358,75 @@ class BiDirectionalStackedLSTM_CRF(BiLSTM_CRF):
     @property
     def layer_num(self):
         return self._layer_num
+
+
+class VariationalBiRNN_CRF(BiLSTM_CRF):
+    """
+    An BiRNN-CRF architecture with the same dropout mask applied at every step for
+    forward/backward rnn cells, as described in:
+    Y. Gal, Z Ghahramani. "A Theoretically Grounded Application of Dropout in Recurrent Neural Networks".
+    https://arxiv.org/abs/1512.05287
+    """
+    def __init__(self, args, embeddings, tag2label, vocab, paths, config):
+        super().__init__(args, embeddings, tag2label, vocab, paths, config)
+        if "cell_type" in args:
+            if isinstance(args.cell_type):
+                self._cell_type = {"lstm": LSTMCell, "gru": GRUCell}[args.cell_type.lower()]
+            elif callable(args.cell_type):
+                self._cell_type = args.cell_type
+            else:
+                raise ValueError("Unsupported cell_type specification.")
+        else:
+            self._cell_type = LSTMCell
+
+    def lookup_layer_op(self):
+        """
+        This method does not create dropout layer for word embedding, as DropoutWrapper applies
+        dropout for RNN inputs.
+        :return:
+        """
+        with tf.variable_scope("words"):
+            _word_embeddings = tf.Variable(self.embeddings,
+                                           dtype=tf.float32,
+                                           trainable=self.update_embedding,
+                                           name="_word_embeddings")
+            self.word_embeddings = tf.nn.embedding_lookup(params=_word_embeddings,
+                                                     ids=self.word_ids,
+                                                     name="word_embeddings")
+
+    def biLSTM_layer_op(self):
+        def get_cell():
+            return DropoutWrapper(self._cell_type(self.hidden_dim),
+                                  input_keep_prob=self.dropout_pl,
+                                  output_keep_prob=self.dropout_pl,
+                                  state_keep_prob=self.dropout_pl,
+                                  variational_recurrent=True,
+                                  dtype=tf.float32,
+                                  input_size=self.hidden_dim)
+        with tf.variable_scope("variational-bi-rnn"):
+            cell_fw, cell_bw = get_cell(), get_cell()
+            (output_fw_seq, output_bw_seq), _ = tf.nn.bidirectional_dynamic_rnn(
+                cell_fw=cell_fw,
+                cell_bw=cell_bw,
+                inputs=self.word_embeddings,
+                sequence_length=self.sequence_lengths,
+                dtype=tf.float32)
+            output = tf.concat([output_fw_seq, output_bw_seq], axis=-1)
+            # output = tf.nn.dropout(output, self.dropout_pl) # Redundancy
+
+        with tf.variable_scope("projection-layer"):
+            W = tf.get_variable(name="W",
+                                shape=[2 * self.hidden_dim, self.num_tags],
+                                initializer=tf.contrib.layers.xavier_initializer(),
+                                dtype=tf.float32)
+
+            b = tf.get_variable(name="b",
+                                shape=[self.num_tags],
+                                initializer=tf.zeros_initializer(),
+                                dtype=tf.float32)
+
+            s = tf.shape(output)
+            output = tf.reshape(output, [-1, 2 * self.hidden_dim])
+            pred = tf.matmul(output, W) + b
+
+            self.logits = tf.reshape(pred, [-1, s[1], self.num_tags])
