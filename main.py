@@ -91,8 +91,7 @@ get_logger(log_path).info(str(args))
 model_constructor = {"bi-lstm-crf": BiLSTM_CRF,
                      "bi-stacked-lstm-crf": BiDirectionalStackedLSTM_CRF,
                      "variational-bi-lstm-crf": VariationalBiRNN_CRF}[args.model_type]
-model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
-model.build_graph()
+
 
 ## training model
 if args.mode == 'train':
@@ -103,6 +102,8 @@ if args.mode == 'train':
     # model.train(train=train_data, dev=dev_data)
 
     ## train model on the whole training data
+    model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
+    model.build_graph()
     print("train data: {}".format(len(train_data)))
     model.train(train=train_data, dev=test_data)  # use test_data as the dev_data to see overfitting phenomena
 
@@ -112,6 +113,8 @@ elif args.mode == 'test':
     print(ckpt_file)
     paths['model_path'] = ckpt_file
     print("test data: {}".format(test_size))
+    model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
+    model.build_graph()
     model.test(test_data)
 
 ## demo
@@ -119,6 +122,8 @@ elif args.mode == 'demo':
     ckpt_file = tf.train.latest_checkpoint(model_path)
     print(ckpt_file)
     paths['model_path'] = ckpt_file
+    model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
+    model.build_graph()
     saver = tf.train.Saver()
     with tf.Session(config=config) as sess:
         print('============= demo =============')
