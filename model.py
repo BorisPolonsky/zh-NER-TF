@@ -325,8 +325,7 @@ class BiDirectionalStackedLSTM_CRF(BiLSTM_CRF):
         :return:
         """
         def inner_cells():
-            return [DropoutWrapper(LSTMCell(self.hidden_dim), output_keep_prob=self.dropout_pl)
-                    for _ in range(self.layer_num)]
+                return [LSTMCell(self.hidden_dim) for _ in range(self.layer_num)]
         with tf.variable_scope("bi-stacked-lstm"):
             cell_fw = tf.nn.rnn_cell.MultiRNNCell(inner_cells())
             cell_bw = tf.nn.rnn_cell.MultiRNNCell(inner_cells())
@@ -337,7 +336,7 @@ class BiDirectionalStackedLSTM_CRF(BiLSTM_CRF):
                 sequence_length=self.sequence_lengths,
                 dtype=tf.float32)
             output = tf.concat([output_fw_seq, output_bw_seq], axis=-1)
-            # output = tf.nn.dropout(output, self.dropout_pl)
+            output = tf.nn.dropout(output, self.dropout_pl)
 
         with tf.variable_scope("proj"):
             W = tf.get_variable(name="W",
