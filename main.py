@@ -30,7 +30,10 @@ parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
 parser.add_argument('--clip', type=float, default=5.0, help='gradient clipping')
 parser.add_argument('--dropout', type=float, default=0.5, help='dropout keep_prob')
 parser.add_argument('--update_embedding', type=str2bool, default=True, help='update embedding during training')
-parser.add_argument('--pretrain_embedding', type=str, default='random', help='use pretrained char embedding or init it randomly')
+parser.add_argument('--pretrained_embedding',
+                    type=str,
+                    default=None,
+                    help='Path to serialized pretrained embedding. By default it would be initialized randomly.')
 parser.add_argument('--embedding_dim', type=int, default=300, help='random init char embedding_dim')
 parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle training data before each epoch')
 parser.add_argument('--mode', type=str, default='demo', help='train/test/demo')
@@ -40,17 +43,21 @@ parser.add_argument('--num_rnn_layer', type=int, default=1,
 parser.add_argument('--output_path', type=str, default=None, help='Directory for saving model, summaries, etc..')
 parser.add_argument('--model_type', type=str, default="bi-lstm-crf",
                     help='bi-lstm-crf/bi-stacked-lstm-crf/variational-bi-lstm-crf')
+parser.add_argument('--word2id', str, default=None, help='Serialized word2id dictionary.')
 args = parser.parse_args()
 
 
 ## get char embeddings
-word2id = read_dictionary(os.path.join('.', args.train_data, 'word2id.pkl'))
-if args.pretrain_embedding == 'random':
+if args.word2id is None:
+    word2id = read_dictionary(os.path.join('.', args.train_data, 'word2id.pkl'))
+else:
+    word2id = read_dictionary(args.word2id)
+
+if args.pretrain_embedding is None:
     embeddings = random_embedding(word2id, args.embedding_dim)
 else:
-    embedding_path = 'pretrain_embedding.npy'
+    embedding_path = os.path.normpath(args.pretrained_embedding)
     embeddings = np.array(np.load(embedding_path), dtype='float32')
-
 
 ## read corpus and get training data
 if args.mode != 'demo':
