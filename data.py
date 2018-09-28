@@ -70,21 +70,28 @@ def vocab_build(vocab_path, corpus_path, min_count):
         pickle.dump(word2id, fw)
 
 
-def sentence2id(sent, word2id):
+def sentence2id(sent, word2id,
+                digit_token_override='<NUM>',
+                latin_char_token_override='<ENG>',
+                unknown_word_token='<UNK>'):
     """
 
-    :param sent:
-    :param word2id:
+    :param sent: Sentence.
+    :param word2id: A dictionary s.t. word2id[word] indicates the index of word.
+    :param digit_token_override. If not None, override digits with this token (str)
+    :param latin_char_token_override. If not None, override latin characters with this token (str).
+    :param unknown_word_token. Token (str) for unknown words.
     :return:
     """
     sentence_id = []
     for word in sent:
-        if word.isdigit():
-            word = '<NUM>'
-        elif ('\u0041' <= word <= '\u005a') or ('\u0061' <= word <= '\u007a'):
-            word = '<ENG>'
+        if (digit_token_override is not None) and word.isdigit():
+            word = digit_token_override
+        elif (latin_char_token_override is not None) and \
+                ('\u0041' <= word <= '\u005a') or ('\u0061' <= word <= '\u007a'):
+            word = latin_char_token_override
         if word not in word2id:
-            word = '<UNK>'
+            word = unknown_word_token
         sentence_id.append(word2id[word])
     return sentence_id
 
@@ -131,7 +138,8 @@ def pad_sequences(sequences, pad_mark=0):
     return seq_list, seq_len_list
 
 
-def batch_yield(data, batch_size, vocab, tag2label, shuffle=False):
+def batch_yield(data, batch_size, vocab, tag2label, shuffle=False,
+                digit_token='<NUM>', latin_char_token='<ENG>', unknown_word_token='<UNK>'):
     """
 
     :param data:
@@ -139,6 +147,9 @@ def batch_yield(data, batch_size, vocab, tag2label, shuffle=False):
     :param vocab:
     :param tag2label:
     :param shuffle:
+    :param digit_token. If not None, override digits with this token (str)
+    :param latin_char_token. If not None, override latin characters with this token (str).
+    :param unknown_word_token. Token (str) for unknown words.
     :return:
     """
     if shuffle:
@@ -146,7 +157,10 @@ def batch_yield(data, batch_size, vocab, tag2label, shuffle=False):
 
     seqs, labels = [], []
     for (sent_, tag_) in data:
-        sent_ = sentence2id(sent_, vocab)
+        sent_ = sentence2id(sent_, vocab,
+                            digit_token_override=digit_token,
+                            latin_char_token_override=latin_char_token,
+                            unknown_word_token=unknown_word_token)
         label_ = [tag2label[tag] for tag in tag_]
 
         if len(seqs) == batch_size:

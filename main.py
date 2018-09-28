@@ -43,7 +43,16 @@ parser.add_argument('--num_rnn_layer', type=int, default=1,
 parser.add_argument('--output_path', type=str, default=None, help='Directory for saving model, summaries, etc..')
 parser.add_argument('--model_type', type=str, default="bi-lstm-crf",
                     help='bi-lstm-crf/bi-stacked-lstm-crf/variational-bi-lstm-crf')
-parser.add_argument('--word2id', str, default=None, help='Serialized word2id dictionary.')
+parser.add_argument('--word2id', type=str, default=None, help='Serialized word2id dictionary.')
+parser.add_argument('--digit_token', type=str, default=None,
+                    help='If specified (e.g. "<NUM>"), '
+                         'all digits in the original text will be overridden with this token.')
+parser.add_argument('--latin_char_token', type=str, default=None,
+                    help='If specified (e.g. "<ENG>"), '
+                         'all latin characters in the original text will be overridden with this token.')
+parser.add_argument('--unknown_word_token', type=str, default='<UNK>',
+                    help='If specified (e.g. "<UNK>"), '
+                    'all characters beyond vocabulary will be overridden with this token.')
 args = parser.parse_args()
 
 
@@ -53,7 +62,7 @@ if args.word2id is None:
 else:
     word2id = read_dictionary(args.word2id)
 
-if args.pretrain_embedding is None:
+if args.pretrained_embedding is None:
     embeddings = random_embedding(word2id, args.embedding_dim)
 else:
     embedding_path = os.path.normpath(args.pretrained_embedding)

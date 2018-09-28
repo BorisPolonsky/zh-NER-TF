@@ -32,6 +32,9 @@ class BiLSTM_CRF(object):
         self.logger = get_logger(paths['log_path'])
         self.result_path = paths['result_path']
         self.config = config
+        self.digit_token = args.digit_token
+        self.latin_token = args.latin_char_token
+        self.unknown_word_token = args.unknown_word_token
 
     def build_graph(self):
         self.add_placeholders()
