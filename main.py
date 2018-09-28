@@ -66,7 +66,10 @@ if args.pretrained_embedding is None:
     embeddings = random_embedding(word2id, args.embedding_dim)
 else:
     embedding_path = os.path.normpath(args.pretrained_embedding)
-    embeddings = np.array(np.load(embedding_path), dtype='float32')
+    embedding = np.load(embedding_path)
+    if isinstance(embedding, np.lib.npyio.NpzFile):
+        embedding = embedding['embedding']
+    embeddings = np.array(embedding, dtype='float32')
 
 ## read corpus and get training data
 if args.mode != 'demo':
