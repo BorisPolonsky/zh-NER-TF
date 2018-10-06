@@ -29,8 +29,13 @@ def main(args):
     # Specify io paths
     if_path, of_path = os.path.normpath(args.input_file), os.path.normpath(args.output_file)
     # entity_re_utils[original_token] = (compiled_re_pattern, new_token_suffix)
-    entity_re_utils = {t_old: (re.compile(r"\{\{%s:[ ]*(.*?[\}]*)\}\}" % t_old), t_new)  # Filter out the possible spaces
-                       for t_old, t_new in zip(token_names_original, token_suffices_new)}  # between ":" and entity.
+    # Note on the following regex
+    # Expression [ ]* filters out the possible spaces between ":" and entity.
+    # The left bracket does not always comes in pairs in this corpus, thus \{* is used as substitution for \{\{.
+    # Note that the corpus contains redundantly nested entites (e.g. {{location:{{location: Some location}}}}.
+    entity_re_utils = {t_old: (re.compile(r"\{*%s:[ ]*(.*?[\}]*)\}\}" % t_old), t_new)
+                       for t_old, t_new in zip(token_names_original, token_suffices_new)}
+
     with open(if_path, "r") as fi, open(of_path, "a", encoding='utf-8') as fo:
         outer_dropout_tag, inner_dropout_tag = object(), object()  # Used as a special label for discarding characters.
         for line in fi:
