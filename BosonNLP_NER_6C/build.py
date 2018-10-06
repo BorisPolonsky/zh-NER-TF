@@ -29,33 +29,51 @@ def main(args):
     # Specify io paths
     if_path, of_path = os.path.normpath(args.input_file), os.path.normpath(args.output_file)
     # entity_re_utils[original_token] = (compiled_re_pattern, new_token_suffix)
-    entity_re_utils = {t_old: (re.compile(r"\{\{%s:[ ]*(.*?)\}\}" % t_old), t_new)  # Filter out the possible spaces
+    entity_re_utils = {t_old: (re.compile(r"\{\{%s:[ ]*(.*?[\}]*)\}\}" % t_old), t_new)  # Filter out the possible spaces
                        for t_old, t_new in zip(token_names_original, token_suffices_new)}  # between ":" and entity.
     with open(if_path, "r") as fi, open(of_path, "a", encoding='utf-8') as fo:
-        dropout_tag = object()  # Used as a special label for discarding characters.
+        outer_dropout_tag, inner_dropout_tag = object(), object()  # Used as a special label for discarding characters.
         for line in fi:
             line = line.rstrip("\n")
             if line == "":
                 continue
             else:
-                line_tokens = [args.non_entity_token] * len(line)
-                # Find each type of entity in a single line
-                for token_old, (compiled_re_pattern, new_token_suffix) in entity_re_utils.items():
-                    if new_token_suffix is None:
-                        continue
-                    # Find each position for labeling entities. This implementation assumes no overlap between entities.
-                    for it in compiled_re_pattern.finditer(line):
-                        print(it.group())
-                        i_entity_begin, i_entity_end = it.span(1)  # Boundary of entity text.
-                        i_match_begin, i_match_end = it.span(0)  # Boundary of whole entity tag.
-                        line_tokens[i_match_begin: i_entity_begin] = [dropout_tag] * (i_entity_begin - i_match_begin)
-                        line_tokens[i_entity_end: i_match_end] = [dropout_tag] * (i_match_end - i_entity_end)
-                        line_tokens[i_entity_begin] = "B-%s" % new_token_suffix
-                        line_tokens[i_entity_begin + 1: i_entity_end] = \
-                            ["I-%s" % new_token_suffix] * (i_entity_end - i_entity_begin - 1)
+                # Some of the entity representation are redundantly nested
+                # (e.g. {{location:{{location: Some location}}}} check before proceeding.
+                exist_nested_entity = True  # Assume existence first
+                while exist_nested_entity:
+                    exist_nested_entity = False
+                    line_tokens = [args.non_entity_token] * len(line)
+                    # Find each type of entity in a single line
+                    for token_old, (compiled_re_pattern, new_token_suffix) in entity_re_utils.items():
+                        # Find each position for labeling entities. This implementation assumes no overlap between entities.
+                        for it in compiled_re_pattern.finditer(line):
+                            print(it.group())
+                            i_entity_begin, i_entity_end = it.span(1)  # Boundary of entity text.
+                            i_match_begin, i_match_end = it.span(0)  # Boundary of whole entity tag.
+                            if not compiled_re_pattern.search(line[i_entity_begin: i_entity_end]):  # Check nesting
+                                if (new_token_suffix is not None) and (not exist_nested_entity):  # parse this entity tag
+                                    line_tokens[i_entity_begin] = "B-%s" % new_token_suffix
+                                    line_tokens[i_entity_begin + 1: i_entity_end] = \
+                                        ["I-%s" % new_token_suffix] * (i_entity_end - i_entity_begin - 1)
+                                line_tokens[i_match_begin: i_entity_begin] = [inner_dropout_tag] * (
+                                            i_entity_begin - i_match_begin)
+                                line_tokens[i_entity_end: i_match_end] = [inner_dropout_tag] * (
+                                            i_match_end - i_entity_end)
+                            else:
+                                # Dropout outer structure without tagging entity
+                                exist_nested_entity = True
+                                line_tokens[i_match_begin: i_entity_begin] = [outer_dropout_tag] * (
+                                        i_entity_begin - i_match_begin)
+                                line_tokens[i_entity_end: i_match_end] = [outer_dropout_tag] * (
+                                        i_match_end - i_entity_end)
+
+
+                    if exist_nested_entity:  # Dropout outer structures and begin a new round
+                        line = "".join([ch if token is not outer_dropout_tag else "" for ch, token in zip(line, line_tokens)])
             assert len(line) == len(line_tokens)
             for i, (ch, token) in enumerate(zip(line, line_tokens)):
-                if token is not dropout_tag:
+                if token is not inner_dropout_tag:
                     fo.write("{}{}{}\n".format(ch, args.sep, token))
                     if ch == "{":
                         print(i)
