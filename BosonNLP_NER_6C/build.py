@@ -3,6 +3,36 @@ import re
 import sys
 
 
+def get_lines(file_handle, internal_lf_process="remove"):
+    """
+    A generator for yielding sentences (with final lf stripped).
+    :param file_handle: File handle for BosonNLP_NER_6C returned by built-in open() function.
+    :param internal_lf_process: Can be specified as either ignore/remove/split.
+    The original file use "\\n" notations to represent
+    line feeds in case multiple lines in the source text are coupled and stored as a single line in the file.
+    Setting this parameter will to either:
+        (split) split these coupled line and yield them separately,
+        (remove) substitute them with empty strings or,
+        (ignore) leave the notations.
+    :return: A single line of sentence/paragraph/article etc., with the tailing
+    line feed "\n" stripped.
+    """
+    if internal_lf_process == "split":
+        raise NotImplemented('Bug not fixed yet in case"\\n" notations appears within single entity structure')
+        for line in file_handle:
+            line = line.rstrip()
+            for internal_line in line.split(r"\n"):
+                yield internal_line
+    elif internal_lf_process == "ignore":
+        for line in file_handle:
+            yield line.rstrip()
+    elif internal_lf_process == "remove":
+        for line in file_handle:
+            yield line.replace(r"\n", "").rstrip()
+    else:
+        raise ValueError("Expected split/ignore/remove, got {}.".format(internal_lf_process))
+
+
 def main(args):
     if args.char_list is not None:
         raise NotImplemented("Not implemented yet.")
@@ -36,9 +66,9 @@ def main(args):
     entity_re_utils = {t_old: (re.compile(r"\{*%s:[ ]*(.*?[\}]*)\}\}" % t_old), t_new)
                        for t_old, t_new in zip(token_names_original, token_suffices_new)}
 
-    with open(if_path, "r") as fi, open(of_path, "a", encoding='utf-8') as fo:
+    with open(if_path, "r") as fi, open(of_path, "w", encoding='utf-8') as fo:
         outer_dropout_tag, inner_dropout_tag = object(), object()  # Used as a special label for discarding characters.
-        for line in fi:
+        for line in get_lines(fi, args.internal_lf_process.lower()):
             line = line.rstrip("\n")
             if line == "":
                 continue
@@ -72,8 +102,6 @@ def main(args):
                                         i_entity_begin - i_match_begin)
                                 line_tokens[i_entity_end: i_match_end] = [outer_dropout_tag] * (
                                         i_match_end - i_entity_end)
-
-
                     if exist_nested_entity:  # Dropout outer structures and begin a new round
                         line = "".join([ch if token is not outer_dropout_tag else "" for ch, token in zip(line, line_tokens)])
             assert len(line) == len(line_tokens)
@@ -120,5 +148,11 @@ if __name__ == "__main__":
                         help="Token for characters within non-entities and entities.")
     parser.add_argument("--sep", type=str, default="\t",
                         help="Delimiter between character and token.")
+    parser.add_argument("--internal-lf-process", type=str, default="remove",
+                        help='Can be specified as either ignore/remove/split.\n'
+                             'The original file use "\\n" notations to represent '
+                             'line feeds in case multiple lines in the source text were coupled as single one. '
+                             'Specifying this option will split these coupled line and treat them as individual'
+                             'sentences.')
     args = parser.parse_args()
     main(args)
