@@ -11,11 +11,46 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
-def get_entity(tag_seq, char_seq):
-    PER = get_PER_entity(tag_seq, char_seq)
-    LOC = get_LOC_entity(tag_seq, char_seq)
-    ORG = get_ORG_entity(tag_seq, char_seq)
-    return PER, LOC, ORG
+def get_entity(tag_seq, char_seq, suffixes=("PER", "LOC", "ORG"), strict=True):
+    """
+    :param tag_seq: A list containing B/I-Entity and other tags.
+    :param char_seq: Character sequence of the same length as tag_seq.
+    :param suffixes: A iterable yielding type of entities to be detected. Default
+    :param strict: bool. If true, raise ValueError when tag_seq is invalid.
+    :return: List with the same length of number of entities to be detected.
+    """
+    return tuple(get_BIO_entity(tag_seq, char_seq, suffix, strict) for suffix in suffixes)
+
+
+def get_BIO_entity(tag_seq, char_seq, suffix, strict=True):
+    """
+    Get entity according to B/I/O-EntityClass Scheme
+    :param tag_seq: Iterable tag sequence
+    :param char_seq:
+    :param suffix:
+    :param strict: bool. If true, raise ValueError when tag_seq is invalid.
+    :return:
+    """
+    entities = []
+    i_tag, b_tag = 'I-%s' % suffix, 'B-%s' % suffix
+    entity_name = None
+    for i, (char, tag) in enumerate(zip(char_seq, tag_seq)):
+        if tag == b_tag:
+            if entity_name is not None:
+                entities.append(entity_name)
+            entity_name = char
+        elif tag == i_tag:
+            if entity_name is not None:
+                entity_name += char
+            elif strict:  # I-EntityClass did not come after B-EntityClass
+                raise ValueError("Sequence does not comply BIO scheme.")
+        else:
+            if entity_name is not None:
+                entities.append(entity_name)
+                entity_name = None
+    if entity_name is not None:
+        entities.append(entity_name)
+    return entities
 
 
 def get_PER_entity(tag_seq, char_seq):
