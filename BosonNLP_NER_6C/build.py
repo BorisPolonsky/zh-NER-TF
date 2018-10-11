@@ -32,6 +32,10 @@ def get_lines(file_handle, internal_lf_process="remove"):
     else:
         raise ValueError("Expected split/ignore/remove, got {}.".format(internal_lf_process))
 
+def get_sentences(lines):
+    for line in lines:
+        for sentence in line.split("。"):
+            yield sentence
 
 def main(args):
     if args.char_list is not None:
@@ -68,7 +72,7 @@ def main(args):
 
     with open(if_path, "r") as fi, open(of_path, "w", encoding='utf-8') as fo:
         outer_dropout_tag, inner_dropout_tag = object(), object()  # Used as a special label for discarding characters.
-        for line in get_lines(fi, args.internal_lf_process.lower()):
+        for line in get_sentences(get_lines(fi, args.internal_lf_process.lower())):
             line = line.rstrip("\n")
             if line == "":
                 continue
@@ -106,7 +110,7 @@ def main(args):
                         line = "".join([ch if token is not outer_dropout_tag else "" for ch, token in zip(line, line_tokens)])
             assert len(line) == len(line_tokens)
             for i, (ch, token) in enumerate(zip(line, line_tokens)):
-                if token is not inner_dropout_tag and ch not in (" ", "\t"):
+                if token is not inner_dropout_tag and ch != args.sep:
                     fo.write("{}{}{}\n".format(ch, args.sep, token))
                     if ch == "{":
                         print(i)
