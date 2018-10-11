@@ -106,7 +106,7 @@ def main(args):
                         line = "".join([ch if token is not outer_dropout_tag else "" for ch, token in zip(line, line_tokens)])
             assert len(line) == len(line_tokens)
             for i, (ch, token) in enumerate(zip(line, line_tokens)):
-                if token is not inner_dropout_tag:
+                if token is not inner_dropout_tag and ch not in (" ", "\t"):
                     fo.write("{}{}{}\n".format(ch, args.sep, token))
                     if ch == "{":
                         print(i)
