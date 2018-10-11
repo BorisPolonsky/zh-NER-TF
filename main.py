@@ -8,13 +8,12 @@ from model import BiLSTM_CRF, BiDirectionalStackedLSTM_CRF, VariationalBiRNN_CRF
 from utils import str2bool, get_logger, get_entity
 from data import read_corpus, read_dictionary, tag2label, random_embedding
 
-
 ## Session configuration
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # default: 0
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
-config.gpu_options.per_process_gpu_memory_fraction = 0.2  # need ~700MB GPU memory
+config.gpu_options.per_process_gpu_memory_fraction = 0.5  # need ~700MB GPU memory
 
 
 ## hyperparameters
@@ -72,12 +71,13 @@ else:
     embeddings = np.array(embedding, dtype='float32')
 
 ## read corpus and get training data
-if args.mode != 'demo':
+if args.mode not in ('demo', 'predict'):
     train_path = os.path.join('.', args.train_data, 'train_data')
     test_path = os.path.join('.', args.test_data, 'test_data')
     train_data = read_corpus(train_path)
     test_data = read_corpus(test_path)
     test_size = len(test_data)
+
 
 
 ## paths setting
@@ -134,7 +134,56 @@ elif args.mode == 'test':
     print("test data: {}".format(test_size))
     model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
-    model.test(test_data)
+    label_list = model.test(test_data)
+    label2tag = {label: tag for tag, label in model.tag2label.items()}
+    for sentence_label, (sentence, sentence_tag_real) in zip(label_list, test_data):
+        sentence_tag_predict = [label2tag[label] for label in sentence_label]
+        if sentence_tag_real != sentence_tag_predict:
+            real_entities = dict(zip(("PER", "LOC", "ORG"), get_entity(sentence_tag_real, sentence, strict=False)))
+            detected_entities = dict(zip(("PER", "LOC", "ORG"), get_entity(sentence_tag_predict, sentence, strict=False)))
+            human_readable_result = []
+            for ch, tag_r, tag_p in zip(sentence, sentence_tag_real, sentence_tag_predict):
+                if tag_r == tag_p:
+                    human_readable_result.append("{}({})".format(ch, tag_r))
+                else:
+                    human_readable_result.append("{}({}|{})".format(ch, tag_r, tag_p))
+            human_readable_result = "".join(human_readable_result)
+            print("Sentence:\n{}\nGround truth:\n{}\nDetection:\n{}".format(human_readable_result,
+                                                                            real_entities,
+                                                                            detected_entities))
+
+elif args.mode == "corpus-check":
+    for data_name, data in zip(("train", "dev"), (train_data, test_data)):
+        print(data_name)
+        for sentence, tags in data:
+            try:
+                get_entity(tags, sentence, strict=True)
+            except ValueError:
+                print("Corrupted tag sequence")
+                print(" ".join("{}({}).".format(ch, tag) for ch, tag in zip(sentence, tags)))
+
+elif args.mode == "predict":
+    ckpt_file = tf.train.latest_checkpoint(model_path)
+    print(ckpt_file)
+    paths['model_path'] = ckpt_file
+    model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
+    model.build_graph()
+    saver = tf.train.Saver()
+    test_path = os.path.join('.', args.test_data, 'test_data')
+    with tf.Session(config=config) as sess:
+        saver.restore(sess, model.model_path)
+        predict_result_path = os.path.join(paths["result_path"], "predict_only")
+        with open(os.path.join('.', args.test_data, 'test_raw_data'), "r") as fi, open(predict_result_path, "w") as fo:
+            for line in fi:
+                line = line.rstrip()
+                if len(line) == 0:
+                    continue
+                test_data = [(line, ("O",) * len(line))]
+                tag = model.demo_one(sess, test_data)
+                PER, LOC, ORG = get_entity(tag, line)
+                human_readable_msg = 'Sentence: {}\nPER: {}\nLOC: {}\nORG: {}'.format(line, PER, LOC, ORG)
+                fo.write(human_readable_msg + "\n")
+                print(human_readable_msg)
 
 ## demo
 elif args.mode == 'demo':
@@ -158,7 +207,7 @@ elif args.mode == 'demo':
                     demo_data = [(demo_sent, ['O'] * len(demo_sent))]
                     tag = model.demo_one(sess, demo_data)
                     PER, LOC, ORG = get_entity(tag, demo_sent)
-                    print('PER: {}\nLOC: {}\nORG: {}'.format(PER, LOC, ORG))
+                    print('PER: {}\nLOC: {}\nORG: {}\n'.format(PER, LOC, ORG))
             except KeyboardInterrupt:
                 break
         print('See you next time!')

@@ -172,6 +172,7 @@ class BiLSTM_CRF(object):
             saver.restore(sess, self.model_path)
             label_list, seq_len_list = self.dev_one_epoch(sess, test)
             self.evaluate(label_list, seq_len_list, test)
+        return label_list
 
     def demo_one(self, sess, sent):
         """
@@ -181,13 +182,36 @@ class BiLSTM_CRF(object):
         :return:
         """
         label_list = []
-        for seqs, labels in batch_yield(sent, self.batch_size, self.vocab, self.tag2label, shuffle=False):
+        for seqs, labels in batch_yield(sent,
+                                        self.batch_size,
+                                        self.vocab,
+                                        self.tag2label,
+                                        shuffle=False):
             label_list_, _ = self.predict_one_batch(sess, seqs)
             label_list.extend(label_list_)
         label2tag = {}
         for tag, label in self.tag2label.items():
             label2tag[label] = tag if label != 0 else label
         tag = [label2tag[label] for label in label_list[0]]
+        return tag
+
+    def predict_only(self, sess, sent):
+        """
+
+        :param sess:
+        :param sent:
+        :return:
+        """
+        label_list = []
+        for seqs, labels in batch_yield(sent, self.batch_size, self.vocab, self.tag2label, shuffle=False):
+            label_list_, _ = self.predict_one_batch(sess, seqs)
+            label_list.extend(label_list_)
+        label2tag = {}
+        for tag, label in self.tag2label.items():
+            label2tag[label] = tag if label != 0 else label
+        tags = []
+        for label in label_list:
+            label2tag[label]
         return tag
 
     def run_one_epoch(self, sess, train, dev, tag2label, epoch, saver):
@@ -315,6 +339,7 @@ class BiLSTM_CRF(object):
         metric_path = os.path.join(self.result_path, 'result_metric_' + epoch_num)
         for _ in conlleval(model_predict, label_path, metric_path):
             self.logger.info(_)
+
 
 
 class BiDirectionalStackedLSTM_CRF(BiLSTM_CRF):
