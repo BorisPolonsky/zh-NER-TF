@@ -6,7 +6,7 @@ import time
 import random
 from model import BiLSTM_CRF, BiDirectionalStackedLSTM_CRF, VariationalBiRNN_CRF
 from utils import str2bool, get_logger, get_entity
-from data import read_corpus, read_dictionary, tag2label, random_embedding
+from data import read_corpus, read_dictionary, get_tag2label, random_embedding
 
 ## Session configuration
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -52,6 +52,8 @@ parser.add_argument('--latin_char_token', type=str, default=None,
 parser.add_argument('--unknown_word_token', type=str, default='<UNK>',
                     help='If specified (e.g. "<UNK>"), '
                     'all characters beyond vocabulary will be overridden with this token.')
+parser.add_argument("--entity-tokens", type=lambda x: x.split(","), default="PER,LOC,ORG",
+                    help="Entity tokens to take into account. Split by commas. Default: PER,LOG,ORG")
 args = parser.parse_args()
 
 
@@ -110,7 +112,7 @@ get_logger(log_path).info(str(args))
 model_constructor = {"bi-lstm-crf": BiLSTM_CRF,
                      "bi-stacked-lstm-crf": BiDirectionalStackedLSTM_CRF,
                      "variational-bi-lstm-crf": VariationalBiRNN_CRF}[args.model_type]
-
+tag2label = get_tag2label(args.entity_tokens)
 
 ## training model
 if args.mode == 'train':
@@ -139,8 +141,8 @@ elif args.mode == 'test':
     for sentence_label, (sentence, sentence_tag_real) in zip(label_list, test_data):
         sentence_tag_predict = [label2tag[label] for label in sentence_label]
         if sentence_tag_real != sentence_tag_predict:
-            real_entities = dict(zip(("PER", "LOC", "ORG"), get_entity(sentence_tag_real, sentence, strict=False)))
-            detected_entities = dict(zip(("PER", "LOC", "ORG"), get_entity(sentence_tag_predict, sentence, strict=False)))
+            real_entities = dict(zip(args.entity_tokens, get_entity(sentence_tag_real, sentence, strict=False)))
+            detected_entities = dict(zip(args.entity_tokens, get_entity(sentence_tag_predict, sentence, strict=False)))
             human_readable_result = []
             for ch, tag_r, tag_p in zip(sentence, sentence_tag_real, sentence_tag_predict):
                 if tag_r == tag_p:
@@ -180,8 +182,11 @@ elif args.mode == "predict":
                     continue
                 test_data = [(line, ("O",) * len(line))]
                 tag = model.demo_one(sess, test_data)
-                PER, LOC, ORG = get_entity(tag, line)
-                human_readable_msg = 'Sentence: {}\nPER: {}\nLOC: {}\nORG: {}'.format(line, PER, LOC, ORG)
+                entities = get_entity(tag, line, suffixes=args.entity_tokens)
+                human_readable_msg = ['Sentence:\n{}'.format(line)] + \
+                                     ["{}:\n{}".format(token, entity) for \
+                                      token, entity in zip(args.entity_tokens, entities)]
+                human_readable_msg = "\n".join(human_readable_msg)
                 fo.write(human_readable_msg + "\n")
                 print(human_readable_msg)
 
@@ -206,8 +211,10 @@ elif args.mode == 'demo':
                     demo_sent = list(demo_sent.strip())
                     demo_data = [(demo_sent, ['O'] * len(demo_sent))]
                     tag = model.demo_one(sess, demo_data)
-                    PER, LOC, ORG = get_entity(tag, demo_sent)
-                    print('PER: {}\nLOC: {}\nORG: {}\n'.format(PER, LOC, ORG))
+                    entities = get_entity(tag, demo_sent, suffixes=args.entity_tokens)
+                    human_readable_msg = "\n".join(["{}:\n{}".format(token, entity)
+                                                    for token, entity in zip(args.entity_tokens, entities)])
+                    print(human_readable_msg)
             except KeyboardInterrupt:
                 break
         print('See you next time!')

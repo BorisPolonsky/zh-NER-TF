@@ -9,6 +9,17 @@ tag2label = {"O": 0,
              }
 
 
+def get_tag2label(entity_tokens):
+    tag2label = {"O": 0}
+    index = 1
+    for token in entity_tokens:
+        tag2label["B-%s" % token] = index
+        index += 1
+        tag2label["I-%s" % token] = index
+        index += 1
+    return tag2label
+
+
 def read_corpus(corpus_path):
     """
     read corpus and return the list of samples
