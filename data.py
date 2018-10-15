@@ -38,7 +38,8 @@ def read_corpus(corpus_path):
         else:
             data.append((sent_, tag_))
             sent_, tag_ = [], []
-
+    if len(sent_) > 0:
+        data.append((sent_, tag_))
     return data
 
 
@@ -63,7 +64,7 @@ def vocab_build(vocab_path, corpus_path, min_count):
             else:
                 word2id[word][1] += 1
     low_freq_words = []
-    for word, [word_id, word_freq] in word2id.items():
+    for word, (word_id, word_freq) in word2id.items():
         if word_freq < min_count and word != '<NUM>' and word != '<ENG>':
             low_freq_words.append(word)
     for word in low_freq_words:
