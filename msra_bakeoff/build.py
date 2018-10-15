@@ -87,7 +87,7 @@ def main(args):
                 sentence_dump = \
                     "\n".join(["{}\t{}".format(ch, bio_tag) for ch, bio_tag in char_bio_tag_stream(word_tag_stream(sentence_node, tag_mapping))])
                 f.write(sentence_dump)
-                f.write("\n")
+                f.write("\n\n")
         sys.stdout.write("Saving parsed file to:\n{}\n".format(o_file_path))
 
 
