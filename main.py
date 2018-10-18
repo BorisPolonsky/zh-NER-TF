@@ -52,7 +52,7 @@ parser.add_argument('--latin_char_token', type=str, default=None,
 parser.add_argument('--unknown_word_token', type=str, default='<UNK>',
                     help='If specified (e.g. "<UNK>"), '
                     'all characters beyond vocabulary will be overridden with this token.')
-parser.add_argument("--entity-tokens", type=lambda x: x.split(","), default="PER,LOC,ORG",
+parser.add_argument("--entity_tokens", type=lambda x: x.split(","), default="PER,LOC,ORG",
                     help="Entity tokens to take into account. Split by commas. Default: PER,LOG,ORG")
 args = parser.parse_args()
 
@@ -141,8 +141,12 @@ elif args.mode == 'test':
     for sentence_label, (sentence, sentence_tag_real) in zip(label_list, test_data):
         sentence_tag_predict = [label2tag[label] for label in sentence_label]
         if sentence_tag_real != sentence_tag_predict:
-            real_entities = dict(zip(args.entity_tokens, get_entity(sentence_tag_real, sentence, strict=False)))
-            detected_entities = dict(zip(args.entity_tokens, get_entity(sentence_tag_predict, sentence, strict=False)))
+            real_entities = dict(
+                zip(args.entity_tokens,
+                    get_entity(sentence_tag_real, sentence, suffixes=args.entity_tokens, strict=False)))
+            detected_entities = dict(
+                zip(args.entity_tokens,
+                    get_entity(sentence_tag_predict, sentence, suffixes=args.entity_tokens, strict=False)))
             human_readable_result = []
             for ch, tag_r, tag_p in zip(sentence, sentence_tag_real, sentence_tag_predict):
                 if tag_r == tag_p:
