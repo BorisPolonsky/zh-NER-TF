@@ -35,6 +35,7 @@ def get_lines(file_handle, internal_lf_process="remove"):
 def get_sentences(lines):
     for line in lines:
         for sentence in line.split("。"):
+            sentence = sentence.strip(" ")
             yield sentence
 
 def main(args):
