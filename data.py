@@ -20,10 +20,11 @@ def get_tag2label(entity_tokens):
     return tag2label
 
 
-def read_corpus(corpus_path):
+def read_corpus(corpus_path, sep='\t'):
     """
     read corpus and return the list of samples
     :param corpus_path:
+    :param sep:
     :return: data
     """
     data = []
@@ -31,8 +32,9 @@ def read_corpus(corpus_path):
         lines = fr.readlines()
     sent_, tag_ = [], []
     for line in lines:
-        if line != '\n':
-            [char, label] = line.strip().split()
+        line = line.rstrip()
+        if len(line) > 0:
+            char, label = line.rstrip().split(sep)
             sent_.append(char)
             tag_.append(label)
         else:
