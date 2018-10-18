@@ -2,6 +2,8 @@ import tensorflow as tf
 import numpy as np
 import os
 import argparse
+import yaml
+import sys
 import time
 import random
 from model import BiLSTM_CRF, BiDirectionalStackedLSTM_CRF, VariationalBiRNN_CRF
@@ -53,16 +55,26 @@ parser.add_argument('--unknown_word_token', type=str, default='<UNK>',
                     help='If specified (e.g. "<UNK>"), '
                     'all characters beyond vocabulary will be overridden with this token.')
 parser.add_argument("--entity_tokens", type=lambda x: x.split(","), default="PER,LOC,ORG",
-                    help="Entity tokens to take into account. Split by commas. Default: PER,LOG,ORG")
+                    help="List of ordered entity tokens to take into account. Split by commas. Default: PER,LOG,ORG")
+parser.add_argument("--config_path", default=None, type=str,
+                    help="A yaml file for overriding parameters specification in this module.")
 args = parser.parse_args()
 
+# Override parameters
+if args.config_path is not None:
+    with open(args.config_path, "r") as f:
+        yml_config = yaml.safe_load(f)
+    for k, v in yml_config.items():
+        if k in args.__dict__:
+            args.__dict__[k] = v
+        else:
+            sys.stderr.write("Ignored unknown parameter {} in yaml.\n".format(k))
 
-## get char embeddings
+# get char embeddings
 if args.word2id is None:
     word2id = read_dictionary(os.path.join('.', args.train_data, 'word2id.pkl'))
 else:
     word2id = read_dictionary(args.word2id)
-
 if args.pretrained_embedding is None:
     embeddings = random_embedding(word2id, args.embedding_dim)
 else:
@@ -72,7 +84,7 @@ else:
         embedding = embedding['embedding']
     embeddings = np.array(embedding, dtype='float32')
 
-## read corpus and get training data
+# read corpus and get training data
 if args.mode not in ('demo', 'predict'):
     train_path = os.path.join('.', args.train_data, 'train_data')
     test_path = os.path.join('.', args.test_data, 'test_data')
@@ -82,7 +94,7 @@ if args.mode not in ('demo', 'predict'):
 
 
 
-## paths setting
+# paths setting
 paths = {}
 if args.output_path is None:
     output_path = os.path.join('.', "data_path_baseline", '1521112368') # Basline model
@@ -108,21 +120,21 @@ paths['log_path'] = log_path
 get_logger(log_path).info(str(args))
 
 
-## Model selection
+# Model selection
 model_constructor = {"bi-lstm-crf": BiLSTM_CRF,
                      "bi-stacked-lstm-crf": BiDirectionalStackedLSTM_CRF,
                      "variational-bi-lstm-crf": VariationalBiRNN_CRF}[args.model_type]
 tag2label = get_tag2label(args.entity_tokens)
 
-## training model
+# training model
 if args.mode == 'train':
-    ## hyperparameters-tuning, split train/dev
+    # hyperparameters-tuning, split train/dev
     # dev_data = train_data[:5000]; dev_size = len(dev_data)
     # train_data = train_data[5000:]; train_size = len(train_data)
     # print("train data: {0}\ndev data: {1}".format(train_size, dev_size))
     # model.train(train=train_data, dev=dev_data)
 
-    ## train model on the whole training data
+    # train model on the whole training data
     model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
     print("train data: {}".format(len(train_data)))
