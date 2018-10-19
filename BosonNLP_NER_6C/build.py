@@ -32,9 +32,23 @@ def get_lines(file_handle, internal_lf_process="remove"):
     else:
         raise ValueError("Expected split/ignore/remove, got {}.".format(internal_lf_process))
 
-def get_sentences(lines):
+def get_segments(lines):
+    def split(string, by):
+        if len(by) > 1:
+            try:
+                s, *by_ = by
+            except ValueError:
+                print(by)
+                exit(-1)
+            for seg in split(string, by=by[1:]):
+                for inner_seg in seg.split(s):
+                    yield inner_seg
+        else:
+            for seg in string.split(by[0]):
+                yield seg
+
     for line in lines:
-        for sentence in line.split("。"):
+        for sentence in split(line, by=("。", "！", "；")):
             sentence = sentence.strip(" ")
             yield sentence
 
@@ -73,7 +87,7 @@ def main(args):
 
     with open(if_path, "r") as fi, open(of_path, "w", encoding='utf-8') as fo:
         outer_dropout_tag, inner_dropout_tag = object(), object()  # Used as a special label for discarding characters.
-        for line in get_sentences(get_lines(fi, args.internal_lf_process.lower())):
+        for line in get_segments(get_lines(fi, args.internal_lf_process.lower())):
             line = line.rstrip("\n")
             if line == "":
                 continue
