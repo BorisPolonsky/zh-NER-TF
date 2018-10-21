@@ -21,7 +21,7 @@ class BiLSTM_CRF(object):
         self.update_embedding = args.update_embedding
         self.dropout_keep_prob = args.dropout
         self.optimizer = args.optimizer
-        self.lr = args.lr
+        self.lr_decay = args.lr_decay
         self.clip_grad = args.clip
         self.tag2label = tag2label
         self.num_tags = len(tag2label)
@@ -35,6 +35,8 @@ class BiLSTM_CRF(object):
         self.digit_token = args.digit_token
         self.latin_token = args.latin_char_token
         self.unknown_word_token = args.unknown_word_token
+        self.lr = args.lr
+        self.lr_decay = 0.0 if args.lr_decay is None else args.lr_decay
 
     def build_graph(self):
         self.add_placeholders()
@@ -229,17 +231,17 @@ class BiLSTM_CRF(object):
 
         start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         batches = batch_yield(train, self.batch_size, self.vocab, self.tag2label, shuffle=self.shuffle)
+        lr = self.lr * (1 - self.lr_decay) ** epoch
         for step, (seqs, labels) in enumerate(batches):
-
             sys.stdout.write(' processing: {} batch / {} batches.\r'.format(step + 1, num_batches))
             step_num = epoch * num_batches + step + 1
-            feed_dict, _ = self.get_feed_dict(seqs, labels, self.lr, self.dropout_keep_prob)
+            feed_dict, _ = self.get_feed_dict(seqs, labels, lr, self.dropout_keep_prob)
             _, loss_train, summary, step_num_ = sess.run([self.train_op, self.loss, self.merged, self.global_step],
                                                          feed_dict=feed_dict)
             if step + 1 == 1 or (step + 1) % 300 == 0 or step + 1 == num_batches:
                 self.logger.info(
-                    '{} epoch {}, step {}, loss: {:.4}, global_step: {}'.format(start_time, epoch + 1, step + 1,
-                                                                                loss_train, step_num))
+                    '{} epoch {}, step {}, loss: {:.4}, global_step: {}, learning_rate: {}'.format(start_time, epoch + 1, step + 1,
+                                                                                loss_train, step_num, lr))
 
             self.file_writer.add_summary(summary, step_num)
 

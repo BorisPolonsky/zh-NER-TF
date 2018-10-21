@@ -58,6 +58,9 @@ parser.add_argument("--entity_tokens", type=lambda x: x.split(","), default="PER
                     help="List of ordered entity tokens to take into account. Split by commas. Default: PER,LOG,ORG")
 parser.add_argument("--config_path", default=None, type=str,
                     help="A yaml file for overriding parameters specification in this module.")
+parser.add_argument("--lr_decay", default=None,
+                    type=lambda x: None if x is None else float(x),
+                    help="Decay factor of learning rate.")
 args = parser.parse_args()
 
 # Override parameters
@@ -198,7 +201,7 @@ elif args.mode == "predict":
                     continue
                 test_data = [(line, ("O",) * len(line))]
                 tag = model.demo_one(sess, test_data)
-                entities = get_entity(tag, line, suffixes=args.entity_tokens)
+                entities = get_entity(tag, line, suffixes=args.entity_tokens, strict=False)
                 human_readable_msg = ['Sentence:\n{}'.format(line)] + \
                                      ["{}:\n{}".format(token, entity) for \
                                       token, entity in zip(args.entity_tokens, entities)]
