@@ -26,8 +26,8 @@ def get_BIO_entity(tag_seq, char_seq, suffix, strict=True):
     """
     Get entity according to B/I/O-EntityClass Scheme
     :param tag_seq: Iterable tag sequence
-    :param char_seq:
-    :param suffix:
+    :param char_seq: Iterable char sequence
+    :param suffix: EntityClass in (B/I)-EntityClass
     :param strict: bool. If true, raise ValueError when tag_seq is invalid.
     :return:
     """
@@ -43,7 +43,7 @@ def get_BIO_entity(tag_seq, char_seq, suffix, strict=True):
             if entity_name is not None:
                 entity_name += char
             elif strict:  # I-EntityClass did not come after B-EntityClass
-                raise ValueError("Sequence does not comply BIO scheme.")
+                raise ValueError("Sequence does not comply with BIO scheme.")
         else:
             if entity_name is not None:
                 entities.append(entity_name)
