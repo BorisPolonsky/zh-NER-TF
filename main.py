@@ -10,6 +10,21 @@ from model import BiLSTM_CRF, BiDirectionalStackedLSTM_CRF, VariationalBiRNN_CRF
 from utils import str2bool, get_logger, get_entity
 from data import read_corpus, read_dictionary, get_tag2label, random_embedding
 
+
+def _find_option_type(key, parser):
+    for opt in parser._get_optional_actions():
+        if ('--' + key) in opt.option_strings:
+            return opt.type
+    raise ValueError("Unsupported option was specified in .yaml file.")
+
+def _parse_tokens(tokens):
+    if isinstance(tokens, str):
+        return tokens.split(",")
+    elif isinstance(tokens, list):
+        return tokens
+    else:
+        raise ValueError("Unknown token format.")
+
 ## Session configuration
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # default: 0
@@ -54,7 +69,7 @@ parser.add_argument('--latin_char_token', type=str, default=None,
 parser.add_argument('--unknown_word_token', type=str, default='<UNK>',
                     help='If specified (e.g. "<UNK>"), '
                     'all characters beyond vocabulary will be overridden with this token.')
-parser.add_argument("--entity_tokens", type=lambda x: x.split(","), default="PER,LOC,ORG",
+parser.add_argument("--entity_tokens", type=_parse_tokens, default="PER,LOC,ORG",
                     help="List of ordered entity tokens to take into account. Split by commas. Default: PER,LOG,ORG")
 parser.add_argument("--config_path", default=None, type=str,
                     help="A yaml file for overriding parameters specification in this module.")
@@ -63,13 +78,16 @@ parser.add_argument("--lr_decay", default=None,
                     help="Decay factor of learning rate.")
 args = parser.parse_args()
 
+
+
+
 # Override parameters
 if args.config_path is not None:
     with open(args.config_path, "r") as f:
         yml_config = yaml.safe_load(f)
     for k, v in yml_config.items():
         if k in args.__dict__:
-            args.__dict__[k] = v
+            args.__dict__[k] = _find_option_type(k, parser)(v)
         else:
             sys.stderr.write("Ignored unknown parameter {} in yaml.\n".format(k))
 
