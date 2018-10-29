@@ -193,7 +193,7 @@ class BiLSTM_CRF(object):
             label_list.extend(label_list_)
         label2tag = {}
         for tag, label in self.tag2label.items():
-            label2tag[label] = tag if label != 0 else label
+            label2tag[label] = tag
         tag = [label2tag[label] for label in label_list[0]]
         return tag
 
@@ -210,7 +210,7 @@ class BiLSTM_CRF(object):
             label_list.extend(label_list_)
         label2tag = {}
         for tag, label in self.tag2label.items():
-            label2tag[label] = tag if label != 0 else label
+            label2tag[label] = tag
         tags = []
         for label in label_list:
             label2tag[label]
@@ -323,7 +323,7 @@ class BiLSTM_CRF(object):
         """
         label2tag = {}
         for tag, label in self.tag2label.items():
-            label2tag[label] = tag if label != 0 else label
+            label2tag[label] = tag
 
         model_predict = []
         for label_, (sent, tag) in zip(label_list, data):
