@@ -7,7 +7,7 @@ import sys
 import time
 import random
 from model import BiLSTM_CRF, BiDirectionalStackedLSTM_CRF, VariationalBiRNN_CRF
-from utils import str2bool, get_logger, get_entity
+from utils import str2bool, get_logger, get_entity, get_BIO_entity_boundaries
 from data import read_corpus, read_dictionary, get_tag2label, random_embedding
 
 
@@ -219,13 +219,22 @@ elif args.mode == "predict":
                     continue
                 test_data = [(line, ("O",) * len(line))]
                 tag = model.demo_one(sess, test_data)
-                entities = get_entity(tag, line, suffixes=args.entity_tokens, strict=False)
-                human_readable_msg = ['Sentence:\n{}'.format(line)] + \
+                tagged_line = list(line)
+                entity_detected = {token: [] for token in args.entity_tokens}
+                for l, r, entity_type in get_BIO_entity_boundaries(tag, line,
+                                                                   suffixes=args.entity_tokens,
+                                                                   strict=False)[::-1]:
+                    tagged_line[l:r] = ["{{{%s:%s}}}" % (entity_type, line[l:r])]
+                    entity_detected[entity_type].append(line[l:r])
+                tagged_line = "".join(tagged_line)
+                """
+                human_readable_msg = ['Sentence:\n{}'.format(line)] + ['Tagged sentence:\n{}'.format(tagged_line)] + \
                                      ["{}:\n{}".format(token, entity) for \
-                                      token, entity in zip(args.entity_tokens, entities)]
+                                      token, entity in entity_detected.items()]
                 human_readable_msg = "\n".join(human_readable_msg)
-                fo.write(human_readable_msg + "\n")
                 print(human_readable_msg)
+                """
+                fo.write(tagged_line + "\n")
 
 ## demo
 elif args.mode == 'demo':

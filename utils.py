@@ -76,6 +76,42 @@ def get_PER_entity(tag_seq, char_seq):
     return PER
 
 
+def get_BIO_entity_boundaries(tag_seq, char_seq, suffixes, strict=True):
+    """
+    Get entity according to B/I/O-EntityClass Scheme
+    :param tag_seq: Iterable tag sequence
+    :param char_seq: Iterable char sequence
+    :param suffixes: A list of EntityClass in (B/I)-EntityClass
+    :param strict: bool. If true, raise ValueError when tag_seq is invalid.
+    :return: a tuple of detected entities from left to right.
+    """
+    entities = []
+    entity = [None] * 3
+    for i, (char, tag) in enumerate(zip(char_seq, tag_seq)):
+        token, suffix = tag[:2], tag[2:]
+        if suffix in suffixes:
+            if token == "B-":
+                if entity[2] is not None:
+                    entities.append(tuple(entity))
+                entity = [i, i + 1, suffix]
+                continue
+            elif token == "I-":
+                if entity[2] != suffix:  # I-EntityClass did not come after B-EntityClass
+                    if strict:
+                        raise ValueError("Sequence does not comply with BIO scheme.")
+                    else:
+                        if entity[2] is not None:
+                            entities.append(tuple(entity))
+                        entity = [i, i + 1, suffix]
+                else:
+                    entity[1] = i + 1
+                continue
+        if entity[2] is not None:
+            entities.append(tuple(entity))
+            entity = [None] * 3
+    return entities
+
+
 def get_LOC_entity(tag_seq, char_seq):
     length = len(char_seq)
     LOC = []
