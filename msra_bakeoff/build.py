@@ -70,12 +70,35 @@ def char_bio_tag_stream(word_tag_pairs, non_entity_tag="O"):
                 yield ch, bio_tag
 
 
+def char_bmeso_tag_stream(word_tag_pairs, non_entity_tag="O"):
+    """
+    Yield char-BMESO_tag pairs.
+    :param word_tag_pairs: Iterable word-tag sequence. e.g. [(word1, O), (word2, ORG), ...]
+    :param non_entity_tag: Non-entity tag.
+    :return:
+    """
+    for word, tag in word_tag_pairs:
+        if tag == non_entity_tag:
+            for ch in word:
+                yield ch, non_entity_tag
+        else:
+            for i, ch in enumerate(word):
+                if i == 0:
+                    bmeso_tag = ("B-%s" if len(word) > 1 else "S-%s") % tag
+                elif i == len(word) - 1:
+                    bmeso_tag = "E-%s" % tag
+                else:
+                    bmeso_tag = "M-%s" % tag
+                yield ch, bmeso_tag
+
+
 def main(args):
     with open(os.path.normpath(args.config_file), "r") as f:
         config = yaml.load(f)
     tag_mapping = get_tag_mapping(config["tag-params"])
     i_file_paths = config["file-params"]["input-file"]
     o_file_paths = config["file-params"]["output-file"]
+    tag_stream = {"bio": char_bio_tag_stream, "bmeso": char_bmeso_tag_stream}[config["tag-params"]["tag-format"].lower()]
     for i_file_path, o_file_path in zip(i_file_paths, o_file_paths):
         sys.stdout.write("Processing file:\n{}\n".format(i_file_path))
         with open(os.path.normpath(i_file_path), "r", encoding="gb18030") as f:
@@ -85,7 +108,7 @@ def main(args):
             for sentence_node in root:
                 # print("\n".join(map(lambda *x: "\t".join(*x), word_tag_stream(sentence_node, tag_mapping))))
                 sentence_dump = \
-                    "\n".join(["{}\t{}".format(ch, bio_tag) for ch, bio_tag in char_bio_tag_stream(word_tag_stream(sentence_node, tag_mapping))])
+                    "\n".join(["{}\t{}".format(ch, tag) for ch, tag in tag_stream(word_tag_stream(sentence_node, tag_mapping))])
                 f.write(sentence_dump)
                 f.write("\n\n")
         sys.stdout.write("Saving parsed file to:\n{}\n".format(o_file_path))
