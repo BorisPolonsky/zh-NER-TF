@@ -257,7 +257,7 @@ elif args.mode == 'demo':
                     demo_sent = list(demo_sent.strip())
                     demo_data = [(demo_sent, ['O'] * len(demo_sent))]
                     tag = model.demo_one(sess, demo_data)
-                    entities = get_entity(tag, demo_sent, suffixes=args.entity_tokens)
+                    entities = get_entity(tag, demo_sent, suffixes=args.entity_tokens, strict=False)
                     human_readable_msg = "\n".join(["{}:\n{}".format(token, entity)
                                                     for token, entity in zip(args.entity_tokens, entities)])
                     print(human_readable_msg)
