@@ -431,7 +431,7 @@ class VariationalBiRNN_CRF(BiLSTM_CRF):
                                   state_keep_prob=self.dropout_pl,
                                   variational_recurrent=True,
                                   dtype=tf.float32,
-                                  input_size=self.hidden_dim)
+                                  input_size=self.embeddings.shape[1])
         with tf.variable_scope("variational-bi-rnn"):
             cell_fw, cell_bw = get_cell(), get_cell()
             (output_fw_seq, output_bw_seq), _ = tf.nn.bidirectional_dynamic_rnn(
