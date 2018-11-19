@@ -37,6 +37,7 @@ class BiLSTM_CRF(object):
         self.unknown_word_token = args.unknown_word_token
         self.lr = args.lr
         self.lr_decay = 0.0 if args.lr_decay is None else args.lr_decay
+        self.embedding_dim = args.embedding_dim
 
     def build_graph(self):
         self.add_placeholders()
@@ -56,11 +57,13 @@ class BiLSTM_CRF(object):
         self.lr_pl = tf.placeholder(dtype=tf.float32, shape=[], name="lr")
 
     def lookup_layer_op(self):
-        with tf.variable_scope("words"):
-            _word_embeddings = tf.Variable(self.embeddings,
-                                           dtype=tf.float32,
-                                           trainable=self.update_embedding,
-                                           name="_word_embeddings")
+        embedding_shape = None if self.embeddings is not None else (len(self.vocab), self.embedding_dim)
+        with tf.variable_scope("words", reuse=False):
+            _word_embeddings = tf.get_variable(initializer=self.embeddings,
+                                               dtype=tf.float32,
+                                               trainable=self.update_embedding,
+                                               name="_word_embeddings",
+                                               shape=embedding_shape)
             word_embeddings = tf.nn.embedding_lookup(params=_word_embeddings,
                                                      ids=self.word_ids,
                                                      name="word_embeddings")
