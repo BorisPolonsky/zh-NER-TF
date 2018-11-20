@@ -6,7 +6,7 @@ import tensorflow as tf
 from tensorflow.nn.rnn_cell import GRUCell, LSTMCell, DropoutWrapper
 from tensorflow.contrib.crf import crf_log_likelihood
 from tensorflow.contrib.crf import viterbi_decode
-from data import pad_sequences, batch_yield
+from data import pad_sequences, batch_yield, sentence2id
 from utils import get_logger
 from eval import conlleval
 
@@ -32,9 +32,9 @@ class BiLSTM_CRF(object):
         self.logger = get_logger(paths['log_path'])
         self.result_path = paths['result_path']
         self.config = config
-        #self.digit_token = args.digit_token  # ?
-        #self.latin_token = args.latin_char_token
-        #self.unknown_word_token = args.unknown_word_token
+        self.digit_token = args.digit_token
+        self.latin_token = args.latin_char_token
+        self.unknown_word_token = args.unknown_word_token
         self.lr = args.lr if 'lr' in args else None
         self.lr_decay = 0.0 if ('lr_decay' not in args) or (args.lr_decay is None) else args.lr_decay
         self.embedding_dim = args.embedding_dim
@@ -207,7 +207,10 @@ class BiLSTM_CRF(object):
                                         self.batch_size,
                                         self.vocab,
                                         self.tag2label,
-                                        shuffle=False):
+                                        shuffle=False,
+                                        digit_token=self.digit_token,
+                                        latin_char_token=self.latin_token,
+                                        unknown_word_token=self.unknown_word_token):
             label_list_, _ = self.predict_one_batch(sess, seqs)
             label_list.extend(label_list_)
         label2tag = {}
@@ -216,22 +219,31 @@ class BiLSTM_CRF(object):
         tag = [label2tag[label] for label in label_list[0]]
         return tag
 
-    def predict_only(self, sess, sent):
+    def predict_only(self, sess, single_batch):
         """
 
-        :param sess:
-        :param sent:
-        :return:
+        :param sess: tf.Session
+        :param single_batch: A single batch where each slot contains a char-sequence.
+        :return: tag_seq_list
         """
-        label_list = []
-        for seqs, labels in batch_yield(sent, self.batch_size, self.vocab, self.tag2label, shuffle=False):
-            label_list_, _ = self.predict_one_batch(sess, seqs)
-            label_list.extend(label_list_)
+        def get_sent2id():
+            return lambda sentence: sentence2id(sent=sentence,
+                                                word2id=self.vocab,
+                                                digit_token_override=self.digit_token,
+                                                latin_char_token_override=self.latin_token,
+                                                unknown_word_token=self.unknown_word_token)
+
+        sent2id = get_sent2id()
+        input_batch = list(map(sent2id, single_batch))
+        label_seq_list, _ = self.predict_one_batch(sess, input_batch)
         label2tag = {}
         for tag, label in self.tag2label.items():
+            # print('test', tag, label)
             label2tag[label] = tag
-        tags = [label2tag[label] for label in label_list]
-        return tags
+        tag_seq_list = []
+        for label_seq in label_seq_list:
+            tag_seq_list.append([label2tag[label] for label in label_seq])
+        return tag_seq_list
 
     def run_one_epoch(self, sess, train, dev, tag2label, epoch, saver):
         """
@@ -249,21 +261,28 @@ class BiLSTM_CRF(object):
         num_batches = (len(train) + self.batch_size - 1) // self.batch_size
 
         start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        batches = batch_yield(train, self.batch_size, self.vocab, self.tag2label, shuffle=self.shuffle)
+        batches = batch_yield(train, self.batch_size, self.vocab, self.tag2label,
+                              shuffle=self.shuffle,
+                              digit_token=self.digit_token,
+                              latin_char_token=self.latin_token,
+                              unknown_word_token=self.unknown_word_token)
         lr = self.lr * (1 - self.lr_decay) ** epoch
         for step, (seqs, labels) in enumerate(batches):
             sys.stdout.write(' processing: {} batch / {} batches.\r'.format(step + 1, num_batches))
             step_num = epoch * num_batches + step + 1
             feed_dict, _ = self.get_feed_dict(seqs, labels, lr, self.dropout_keep_prob)
-            _, loss_train, summary, step_num_ = sess.run([self.train_op, self.loss, self.merged, self.global_step],
+            _, loss_train, summary, step_num_ = sess.run([self.train_op,
+                                                          self.loss, self.merged, self.global_step],
                                                          feed_dict=feed_dict)
             if step + 1 == 1 or (step + 1) % 300 == 0 or step + 1 == num_batches:
                 self.logger.info(
-                    '{} epoch {}, step {}, loss: {:.4}, global_step: {}, learning_rate: {}'.format(start_time, epoch + 1, step + 1,
-                                                                                loss_train, step_num, lr))
-
+                    '{} epoch {}, step {}, loss: {:.4}, '
+                    'global_step: {}, learning_rate: {}'.format(start_time,
+                                                                epoch + 1, step + 1,
+                                                                loss_train,
+                                                                step_num,
+                                                                lr))
             self.file_writer.add_summary(summary, step_num)
-
             if step + 1 == num_batches:
                 saver.save(sess, self.model_path, global_step=step_num)
 
@@ -302,7 +321,11 @@ class BiLSTM_CRF(object):
         :return:
         """
         label_list, seq_len_list = [], []
-        for seqs, labels in batch_yield(dev, self.batch_size, self.vocab, self.tag2label, shuffle=False):
+        for seqs, labels in batch_yield(dev, self.batch_size, self.vocab, self.tag2label,
+                                        shuffle=False,
+                                        digit_token=self.digit_token,
+                                        latin_char_token=self.latin_token,
+                                        unknown_word_token=self.unknown_word_token):
             label_list_, seq_len_list_ = self.predict_one_batch(sess, seqs)
             label_list.extend(label_list_)
             seq_len_list.extend(seq_len_list_)
