@@ -14,36 +14,47 @@ from eval import conlleval
 class BiLSTM_CRF(object):
     def __init__(self, args, embeddings, tag2label, vocab, paths, config):
         self.batch_size = args.batch_size
-        self.epoch_num = args.epoch
+        self.epoch_num = args.epoch if 'epoch' in args else None
         self.hidden_dim = args.hidden_dim
         self.embeddings = embeddings
         self.CRF = args.CRF
         self.update_embedding = args.update_embedding
-        self.dropout_keep_prob = args.dropout
-        self.optimizer = args.optimizer
-        self.lr_decay = args.lr_decay
-        self.clip_grad = args.clip
+        self.dropout_keep_prob = args.dropout if 'dropout' in args else 1
+        self.optimizer = args.optimizer if 'optimizer' in args else 'SGD'
+        self.lr_decay = args.lr_decay if 'lr_decay' in args else 1
+        self.clip_grad = args.clip if 'clip' in args else None
         self.tag2label = tag2label
         self.num_tags = len(tag2label)
         self.vocab = vocab
-        self.shuffle = args.shuffle
+        self.shuffle = args.shuffle if 'shuffle' in args else False
         self.model_path = paths['model_path']
         self.summary_path = paths['summary_path']
         self.logger = get_logger(paths['log_path'])
         self.result_path = paths['result_path']
         self.config = config
-        self.digit_token = args.digit_token
-        self.latin_token = args.latin_char_token
-        self.unknown_word_token = args.unknown_word_token
-        self.lr = args.lr
-        self.lr_decay = 0.0 if args.lr_decay is None else args.lr_decay
+        #self.digit_token = args.digit_token  # ?
+        #self.latin_token = args.latin_char_token
+        #self.unknown_word_token = args.unknown_word_token
+        self.lr = args.lr if 'lr' in args else None
+        self.lr_decay = 0.0 if ('lr_decay' not in args) or (args.lr_decay is None) else args.lr_decay
         self.embedding_dim = args.embedding_dim
+
+        self.transition_params = None
+        self.loss = None
+        self.global_step = None
+        self.logits = None
+        self.log_likelihood = None
+        self.labels_softmax_ = None
+        self.word_embeddings = None
+        self.word_ids = None
+        self.merged = None
+        self.train_op = None
 
     def build_graph(self):
         self.add_placeholders()
         self.lookup_layer_op()
         self.biLSTM_layer_op()
-        self.softmax_pred_op()
+        self.pred_op()
         self.loss_op()
         self.trainstep_op()
         self.init_op()
@@ -101,11 +112,7 @@ class BiLSTM_CRF(object):
 
     def loss_op(self):
         if self.CRF:
-            log_likelihood, self.transition_params = crf_log_likelihood(inputs=self.logits,
-                                                                   tag_indices=self.labels,
-                                                                   sequence_lengths=self.sequence_lengths)
-            self.loss = -tf.reduce_mean(log_likelihood)
-
+            self.loss = -tf.reduce_mean(self.log_likelihood)
         else:
             losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits,
                                                                     labels=self.labels)
@@ -115,10 +122,15 @@ class BiLSTM_CRF(object):
 
         tf.summary.scalar("loss", self.loss)
 
-    def softmax_pred_op(self):
+    def pred_op(self):
         if not self.CRF:
             self.labels_softmax_ = tf.argmax(self.logits, axis=-1)
             self.labels_softmax_ = tf.cast(self.labels_softmax_, tf.int32)
+        else:
+            self.log_likelihood, self.transition_params = crf_log_likelihood(inputs=self.logits,
+                                                                             tag_indices=self.labels,
+                                                                             sequence_lengths=self.sequence_lengths)
+
 
     def trainstep_op(self):
         with tf.variable_scope("train_step"):
@@ -139,7 +151,10 @@ class BiLSTM_CRF(object):
                 optim = tf.train.GradientDescentOptimizer(learning_rate=self.lr_pl)
 
             grads_and_vars = optim.compute_gradients(self.loss)
-            grads_and_vars_clip = [[tf.clip_by_value(g, -self.clip_grad, self.clip_grad), v] for g, v in grads_and_vars]
+            if self.clip_grad is not None:
+                grads_and_vars_clip = [[tf.clip_by_value(g, -self.clip_grad, self.clip_grad), v] for g, v in grads_and_vars]
+            else:
+                grads_and_vars_clip = grads_and_vars  # Leave it as is
             self.train_op = optim.apply_gradients(grads_and_vars_clip, global_step=self.global_step)
 
     def init_op(self):
@@ -166,7 +181,8 @@ class BiLSTM_CRF(object):
         with tf.Session(config=self.config) as sess:
             sess.run(self.init_op)
             self.add_summary(sess)
-
+            if self.epoch_num is None:
+                raise RuntimeError("Please specify epoch_num.")
             for epoch in range(self.epoch_num):
                 self.run_one_epoch(sess, train, dev, self.tag2label, epoch, saver)
 
@@ -214,10 +230,8 @@ class BiLSTM_CRF(object):
         label2tag = {}
         for tag, label in self.tag2label.items():
             label2tag[label] = tag
-        tags = []
-        for label in label_list:
-            label2tag[label]
-        return tag
+        tags = [label2tag[label] for label in label_list]
+        return tags
 
     def run_one_epoch(self, sess, train, dev, tag2label, epoch, saver):
         """
@@ -230,6 +244,8 @@ class BiLSTM_CRF(object):
         :param saver:
         :return:
         """
+        if self.lr is None:
+            raise RuntimeError("Please specify lr.")
         num_batches = (len(train) + self.batch_size - 1) // self.batch_size
 
         start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
