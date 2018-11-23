@@ -109,6 +109,8 @@ def get_BIO_entity_boundaries(tag_seq, char_seq, suffixes, strict=True):
         if entity[2] is not None:
             entities.append(tuple(entity))
             entity = [None] * 3
+    if entity[2] is not None:
+        entities.append(tuple(entity))
     return entities
 
 
