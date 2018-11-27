@@ -29,7 +29,7 @@ class BiLSTM_CRF(object):
         self.shuffle = args.shuffle if 'shuffle' in args else False
         self.model_path = paths['model_path']
         self.summary_path = paths['summary_path']
-        self.logger = get_logger(paths['log_path'])
+        self.logger = get_logger(paths['log_path'], logger_name=__name__)
         self.result_path = paths['result_path']
         self.config = config
         self.digit_token = args.digit_token

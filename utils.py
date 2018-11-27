@@ -160,12 +160,25 @@ def get_ORG_entity(tag_seq, char_seq):
     return ORG
 
 
-def get_logger(filename):
-    logger = logging.getLogger('logger')
+def get_logger(filename, logger_name=None):
+    """
+    The function will return the created logger only
+    without adding additional handlers to it.
+    In addition, calling this function will configure root logger,
+    if and only if it's not yet done before.
+    :param filename: Path for FileHandler of root logger.
+    :param logger_name: Name of the logger.
+    :return: logger
+    """
+    fmt = logging.Formatter('%(asctime)s:%(levelname)s: %(message)s')
+    file_handler = logging.FileHandler(filename)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(fmt)
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(fmt)
+    stream_handler.setLevel(logging.DEBUG)
+    # The following state does nothing if the root logger is already configured.
+    logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, stream_handler])
+    logger = logging.getLogger(logger_name)
     logger.setLevel(logging.DEBUG)
-    logging.basicConfig(format='%(message)s', level=logging.DEBUG)
-    handler = logging.FileHandler(filename)
-    handler.setLevel(logging.DEBUG)
-    handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s: %(message)s'))
-    logging.getLogger().addHandler(handler)
     return logger
