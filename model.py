@@ -531,9 +531,11 @@ class VariationalBiRNN_CRF(BiLSTM_CRF):
 
             self.logits = tf.reshape(pred, [-1, s[1], self.num_tags])
 
+
+class IDCNN_CRF(Model):
     def __init__(self, args, embeddings, tag2label, vocab, paths, config):
         super().__init__(args, embeddings, tag2label, vocab, paths, config)
-        self.num_filter = args.num_filter
+        self.num_filter = args.hidden_dim
         self.filter_width = args.filter_width
         self.transition_params = None
         self.loss = None
@@ -545,6 +547,9 @@ class VariationalBiRNN_CRF(BiLSTM_CRF):
         self.word_ids = None
         self.merged = None
         self.train_op = None
+        self.n_repeat = args.num_repeat
+        self.dilation_rate = args.dilation
+        self.n_repeat = args.num_repeat
 
     def build_graph(self):
         self.add_placeholders()
@@ -562,24 +567,36 @@ class VariationalBiRNN_CRF(BiLSTM_CRF):
         self.dropout_pl = tf.placeholder(dtype=tf.float32, shape=[], name="dropout")
         self.lr_pl = tf.placeholder(dtype=tf.float32, shape=[], name="lr")
 
-    @property
-    def init_op(self):
-        return tf.global_variables_initializer()
+    def pred_op(self):
+        if not self.CRF:
+            self.labels_softmax_ = tf.argmax(self.logits, axis=-1)
+            self.labels_softmax_ = tf.cast(self.labels_softmax_, tf.int32)
+        else:
+            self.log_likelihood, self.transition_params = crf_log_likelihood(inputs=self.logits,
+                                                                             tag_indices=self.labels,
+                                                                             sequence_lengths=self.sequence_lengths)
 
     def idcnn_layer_op(self):
         # self.word_embeddings [batch_size, max_time, embedding_dim]
         layer_input = tf.expand_dims(self.word_embeddings, axis=1)
-        with tf.variable_scope("idcnn") as scope:
+        with tf.variable_scope("idcnn"):
             with tf.variable_scope("input_proj"):
                 input_filter = tf.get_variable("input_mapping_filter",
                                                shape=[1, self.filter_width, self.embedding_dim, self.num_filter])
                 layer_input = tf.nn.convolution(layer_input, input_filter,
-                                                padding="same", strides=[1, 1, 1, 1],
+                                                padding="SAME", strides=[1, 1],
                                                 dilation_rate=None, name="input")  # [batch_size, 1, max_time, self.num_filter]
+                """
+                tf.nn.conv2d(layer_input,
+                             input_filter,
+                             strides=[1, 1, 1, 1],
+                             padding="SAME",
+                             name="init_layer")
+                """
             with tf.variable_scope("conv"):
                 final_output, conv_output_dim = [], 0
                 for repeat_i in range(self.n_repeat):
-                    for layer_j, dilation in enumerate(self.n_idcnn_layer):
+                    for layer_j, dilation in enumerate(self.dilation_rate):
                         with tf.variable_scope("dilated-conv-{}".format(layer_j + 1), reuse=tf.AUTO_REUSE):
                             filter_w = tf.get_variable("filter_w",
                                                        shape=[1, self.filter_width, self.num_filter, self.num_filter],
@@ -601,6 +618,22 @@ class VariationalBiRNN_CRF(BiLSTM_CRF):
                 proj_b = tf.get_variable(name="b", shape=[self.num_tags])
                 final_output = tf.nn.xw_plus_b(final_output, proj_w, proj_b)
                 self.logits = tf.reshape(final_output, shape=[-1, conv_out_shape[1], self.num_tags])
+
+    @property
+    def init_op(self):
+        return tf.global_variables_initializer()
+
+    def loss_op(self):
+        if self.CRF:
+            self.loss = -tf.reduce_mean(self.log_likelihood)
+        else:
+            losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits,
+                                                                    labels=self.labels)
+            mask = tf.sequence_mask(self.sequence_lengths)
+            losses = tf.boolean_mask(losses, mask)
+            self.loss = tf.reduce_mean(losses)
+
+        tf.summary.scalar("loss", self.loss)
 
     def predict_one_batch(self, sess, seqs):
         """
@@ -624,3 +657,26 @@ class VariationalBiRNN_CRF(BiLSTM_CRF):
         else:
             label_list = sess.run(self.labels_softmax_, feed_dict=feed_dict)
             return label_list, seq_len_list
+
+    def get_feed_dict(self, seqs, labels=None, lr=None, dropout=None):
+        """
+
+        :param seqs:
+        :param labels:
+        :param lr:
+        :param dropout:
+        :return: feed_dict
+        """
+        word_ids, seq_len_list = pad_sequences(seqs, pad_mark=0)
+
+        feed_dict = {self.word_ids: word_ids,
+                     self.sequence_lengths: seq_len_list}
+        if labels is not None:
+            labels_, _ = pad_sequences(labels, pad_mark=0)
+            feed_dict[self.labels] = labels_
+        if lr is not None:
+            feed_dict[self.lr_pl] = lr
+        if dropout is not None:
+            feed_dict[self.dropout_pl] = dropout
+
+        return feed_dict, seq_len_list

@@ -6,7 +6,7 @@ import yaml
 import sys
 import time
 import random
-from model import BiLSTM_CRF, BiDirectionalStackedLSTM_CRF, VariationalBiRNN_CRF
+from model import BiLSTM_CRF, BiDirectionalStackedLSTM_CRF, VariationalBiRNN_CRF, IDCNN_CRF
 from utils import str2bool, get_logger, get_entity, get_BIO_entity_boundaries
 from data import read_corpus, read_dictionary, get_tag2label, random_embedding
 
@@ -17,20 +17,23 @@ def _find_option_type(key, parser):
             return opt.type
     raise ValueError("Unsupported option was specified in .yaml file.")
 
-def _parse_tokens(tokens):
-    if isinstance(tokens, str):
-        return tokens.split(",")
-    elif isinstance(tokens, list):
-        return tokens
-    else:
-        raise ValueError("Unknown token format.")
+
+def _2_list(dtype):
+    def convert(val):
+        if isinstance(val, str):
+            return list(map(lambda str_element: dtype(str_element), val.split(",")))
+        elif isinstance(val, list):
+            return list(map(lambda list_element: dtype(list_element), val))
+        else:
+            raise ValueError("Unknown format.")
+    return convert
 
 ## Session configuration
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # default: 0
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
-config.gpu_options.per_process_gpu_memory_fraction = 0.5  # need ~700MB GPU memory
+config.gpu_options.per_process_gpu_memory_fraction = 1  # need ~700MB GPU memory
 
 
 ## hyperparameters
@@ -58,7 +61,7 @@ parser.add_argument('--num_rnn_layer', type=int, default=1,
                     help='Number of RNN cells to be stacked.')
 parser.add_argument('--output_path', type=str, default=None, help='Directory for saving model, summaries, etc..')
 parser.add_argument('--model_type', type=str, default="bi-lstm-crf",
-                    help='bi-lstm-crf/bi-stacked-lstm-crf/variational-bi-lstm-crf')
+                    help='bi-lstm-crf/bi-stacked-lstm-crf/variational-bi-lstm-crf/idcnn-crf')
 parser.add_argument('--word2id', type=str, default=None, help='Serialized word2id dictionary.')
 parser.add_argument('--digit_token', type=str, default=None,
                     help='If specified (e.g. "<NUM>"), '
@@ -69,16 +72,20 @@ parser.add_argument('--latin_char_token', type=str, default=None,
 parser.add_argument('--unknown_word_token', type=str, default='<UNK>',
                     help='If specified (e.g. "<UNK>"), '
                     'all characters beyond vocabulary will be overridden with this token.')
-parser.add_argument("--entity_tokens", type=_parse_tokens, default="PER,LOC,ORG",
+parser.add_argument("--entity_tokens", type=_2_list(str), default="PER,LOC,ORG",
                     help="List of ordered entity tokens to take into account. Split by commas. Default: PER,LOG,ORG")
 parser.add_argument("--config_path", default=None, type=str,
                     help="A yaml file for overriding parameters specification in this module.")
 parser.add_argument("--lr_decay", default=None,
                     type=lambda x: None if x is None else float(x),
                     help="Decay factor of learning rate.")
+parser.add_argument("--num_repeat", default=4, type=int,
+                    help="number of repeated blocks of idcnn layers.")
+parser.add_argument("--dilation", type=_2_list(int), default="1,2,3",
+                    help="List of dilation rate")
+parser.add_argument("--filter_width", type=int, default=3,
+                    help="Width of filters in idcnn-crf.")
 args = parser.parse_args()
-
-
 
 
 # Override parameters
@@ -144,7 +151,8 @@ get_logger(log_path).info(str(args))
 # Model selection
 model_constructor = {"bi-lstm-crf": BiLSTM_CRF,
                      "bi-stacked-lstm-crf": BiDirectionalStackedLSTM_CRF,
-                     "variational-bi-lstm-crf": VariationalBiRNN_CRF}[args.model_type]
+                     "variational-bi-lstm-crf": VariationalBiRNN_CRF,
+                     "idcnn-crf":IDCNN_CRF}[args.model_type]
 tag2label = get_tag2label(args.entity_tokens)
 
 # training model
