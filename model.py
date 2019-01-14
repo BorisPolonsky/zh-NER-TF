@@ -485,14 +485,17 @@ class VariationalBiRNN_CRF(BiLSTM_CRF):
         dropout for RNN inputs.
         :return:
         """
+        embedding_shape = None if self.embeddings is not None else (len(self.vocab), self.embedding_dim)
         with tf.variable_scope("words"):
-            _word_embeddings = tf.Variable(self.embeddings,
-                                           dtype=tf.float32,
-                                           trainable=self.update_embedding,
-                                           name="_word_embeddings")
+            _word_embeddings = tf.get_variable(initializer=self.embeddings,
+                                               dtype=tf.float32,
+                                               trainable=self.update_embedding,
+                                               name="_word_embeddings",
+                                               shape=embedding_shape)
+
             self.word_embeddings = tf.nn.embedding_lookup(params=_word_embeddings,
-                                                     ids=self.word_ids,
-                                                     name="word_embeddings")
+                                                          ids=self.word_ids,
+                                                          name="word_embeddings")
 
     def biLSTM_layer_op(self):
         def get_cell():
@@ -502,7 +505,7 @@ class VariationalBiRNN_CRF(BiLSTM_CRF):
                                   state_keep_prob=self.dropout_pl,
                                   variational_recurrent=True,
                                   dtype=tf.float32,
-                                  input_size=self.embeddings.shape[1])
+                                  input_size=self.embedding_dim)
         with tf.variable_scope("variational-bi-rnn"):
             cell_fw, cell_bw = get_cell(), get_cell()
             (output_fw_seq, output_bw_seq), _ = tf.nn.bidirectional_dynamic_rnn(
