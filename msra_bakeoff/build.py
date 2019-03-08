@@ -108,44 +108,59 @@ def char_bmeso_tag_stream(word_tag_pairs, non_entity_tag="O"):
 
 
 class SpokenLanguageWordProcessor:
-    NUMBER_MAPPING = {"0": "零", "０": "零", "〇": "零", "○": "零",
-                      "1": "一", "１": "一",
-                      "2": "二", "２": "二",
-                      "3": "三", "３": "三",
-                      "4": "四", "４": "四",
-                      "5": "五", "５": "五",
-                      "6": "六", "６": "六",
-                      "7": "七", "７": "七",
-                      "8": "八", "８": "八",
-                      "9": "九", "９": "九"}
+    NUM_2_CHAR_MAPPING = {"0": "零", "〇": "零", "○": "零",
+                          "1": "一",
+                          "2": "二",
+                          "3": "三",
+                          "4": "四",
+                          "5": "五",
+                          "6": "六",
+                          "7": "七",
+                          "8": "八",
+                          "9": "九"}
+    NUM_MAPPING = {"０": "0",
+                   "１": "1",
+                   "２": "2",
+                   "３": "3",
+                   "４": "4",
+                   "５": "5",
+                   "６": "6",
+                   "７": "7",
+                   "８": "8",
+                   "９": "9"}
     NUMBERS = "零一二三四五六七八九"
+    SYMBOL_MAPPING = {"。": " ", ",": " ", ":": " ", "“": "", "”": ""}
 
     def __init__(self):
         pass
 
     def process(self, word_category_tag_stream):
         for word, category, tag in word_category_tag_stream:
+            word = self._safe_replace(word, self.__class__.NUM_MAPPING)
             if tag == "PHONE":
                 word = word.replace("一", "幺")
-            if tag == "DATE" and re.search("[零一二三四五六七八九]日", word):
-                print("Word before conversion:", word)
-                word = word[:-1] + "号"
-                print("Word after conversion:", word)
-            if tag == "TIM":
-                match = re.search("[零一二三四五六七八九]时", word)
+            elif tag == "DATE":
+                match = re.search("[0-9十一二三四五六七八九]日", word)
                 if match:
                     replace_idx = match.span(0)[-1]
-                print("Word before conversion:", word)
-                word = word[:replace_idx] + "点" + word[:replace_idx + 1]
-                print("Word after conversion:", word)
-            if tag == "MON":
-                match = re.search("[零一二三四五六七八九]元", word)
+                    print("Word before conversion:", word)
+                    word = word[:replace_idx - 1] + "号" + word[replace_idx:]
+                    print("Word after conversion:", word)
+            elif tag == "TIME":
+                match = re.search("[0-9十一二三四五六七八九零]时", word)
                 if match:
                     replace_idx = match.span(0)[-1]
-                print("Word before conversion:", word)
-                word = word[:replace_idx] + "块" + word[:replace_idx + 1]
-                print("Word after conversion:", word)
-            word = self._safe_replace(word, self.__class__.NUMBER_MAPPING)
+                    print("Word before conversion:", word)
+                    word = word[:replace_idx - 1] + "点" + word[replace_idx:]
+                    print("Word after conversion:", word)
+            elif tag == "MON":
+                match = re.search("[0-9零一二三四五六七八九十百千万]元", word)
+                if match:
+                    replace_idx = match.span(0)[-1]
+                    print("Word before conversion:", word)
+                    word = word[:replace_idx - 1] + "块" + word[replace_idx:]
+                    print("Word after conversion:", word)
+            word = self._safe_replace(word, self.__class__.NUM_2_CHAR_MAPPING)
             if len(word) > 0:
                 yield word, category, tag
 
