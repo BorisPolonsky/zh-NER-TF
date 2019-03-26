@@ -31,7 +31,7 @@ def _2_list(dtype):
 ## Session configuration
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # default: 0
-config = tf.ConfigProto()
+config = tf.compat.v1.ConfigProto()
 config.gpu_options.allow_growth = True
 config.gpu_options.per_process_gpu_memory_fraction = 1  # need ~700MB GPU memory
 
@@ -215,9 +215,9 @@ elif args.mode == "predict":
     paths['model_path'] = ckpt_file
     model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
-    saver = tf.train.Saver()
+    saver = tf.compat.v1.train.Saver()
     test_path = os.path.join('.', args.test_data, 'test_data')
-    with tf.Session(config=config) as sess:
+    with tf.compat.v1.Session(config=config) as sess:
         saver.restore(sess, model.model_path)
         predict_result_path = os.path.join(paths["result_path"], "predict_only")
         with open(os.path.join('.', args.test_data, 'test_raw_data'), "r") as fi, open(predict_result_path, "w") as fo:
@@ -251,8 +251,8 @@ elif args.mode == 'demo':
     paths['model_path'] = ckpt_file
     model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
-    saver = tf.train.Saver()
-    with tf.Session(config=config) as sess:
+    saver = tf.compat.v1.train.Saver()
+    with tf.compat.v1.Session(config=config) as sess:
         print('============= demo =============')
         saver.restore(sess, ckpt_file)
         while True:
