@@ -82,7 +82,7 @@ def main(args):
     # Expression [ ]* filters out the possible spaces between ":" and entity.
     # The left bracket does not always comes in pairs in this corpus, thus \{* is used as substitution for \{\{.
     # Note that the corpus contains redundantly nested entites (e.g. {{location:{{location: Some location}}}}.
-    entity_re_utils = {t_old: (re.compile(r"\{*%s:[ ]*(.*?[\}]*)\}\}" % t_old), t_new)
+    entity_re_utils = {t_old: (re.compile(r"\{*%s:[  ]*(.*?[\}]*)\}\}" % t_old), t_new)
                        for t_old, t_new in zip(token_names_original, token_suffices_new)}
 
     with open(if_path, "r") as fi, open(of_path, "w", encoding='utf-8') as fo:
