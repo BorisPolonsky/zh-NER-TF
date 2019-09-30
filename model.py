@@ -4,8 +4,7 @@ import time
 import sys
 import tensorflow as tf
 from tensorflow.nn.rnn_cell import GRUCell, LSTMCell, DropoutWrapper
-from tensorflow.contrib.crf import crf_log_likelihood
-from tensorflow.contrib.crf import viterbi_decode
+from tensorflow.contrib.crf import viterbi_decode, crf_decode, crf_log_likelihood
 from data import pad_sequences, batch_yield, sentence2id
 from utils import get_logger
 from eval import conlleval
@@ -16,6 +15,7 @@ class Model:
     """
     The Basic model class.
     """
+
     def __init__(self, args, embeddings, tag2label, vocab, paths, config):
         self.batch_size = args.batch_size
         self.epoch_num = args.epoch if 'epoch' in args else None
@@ -53,15 +53,45 @@ class Model:
         self.train_op = None
         self.global_step = None
 
-    def add_placeholders(self):
+    def export(self, sess, export_dir):
+        """
+        Export model as protobuf files that can be used in tensorflow/serving.
+        N.B. build_graph() should be called first with `eval_only` specified as True before calling this method.
+        :param sess: tf.Session(), with checkpoint to be exported restored.
+        :param export_dir: Directory for exporting model.
+        :return: None
+        """
+        if self.CRF:
+            label_ids = crf_decode(self.logits, self.transition_params, self.sequence_lengths)[0]
+        else:
+            label_ids = self.labels_softmax_
+        prediction_signature = (
+            tf.saved_model.signature_def_utils.build_signature_def(
+                inputs={
+                    "input_ids": tf.saved_model.utils.build_tensor_info(self.word_ids),
+                    "sequence_length": tf.saved_model.utils.build_tensor_info(self.sequence_lengths)
+                },
+                outputs={"labels_ids": tf.saved_model.utils.build_tensor_info(label_ids)
+                         },
+                method_name=tf.saved_model.signature_constants.PREDICT_METHOD_NAME))
+        builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
+        builder.add_meta_graph_and_variables(sess, [tf.saved_model.tag_constants.SERVING],
+                                             signature_def_map={
+                                                 "predict": prediction_signature,
+                                             },
+                                             main_op=tf.tables_initializer(),
+                                             strip_default_attrs=True)
+        builder.save()
+
+    def add_placeholders(self, eval_only=False):
         self.word_ids = tf.placeholder(tf.int32, shape=[None, None], name="word_ids")
-        self.labels = tf.placeholder(tf.int32, shape=[None, None], name="labels")
         self.sequence_lengths = tf.placeholder(tf.int32, shape=[None], name="sequence_lengths")
+        self.labels = tf.placeholder(tf.int32, shape=[None, None], name="labels")
+        if not eval_only:
+            self.dropout_pl = tf.placeholder(dtype=tf.float32, shape=[], name="dropout")
+            self.lr_pl = tf.placeholder(dtype=tf.float32, shape=[], name="lr")
 
-        self.dropout_pl = tf.placeholder(dtype=tf.float32, shape=[], name="dropout")
-        self.lr_pl = tf.placeholder(dtype=tf.float32, shape=[], name="lr")
-
-    def lookup_layer_op(self):
+    def lookup_layer_op(self, eval_only=False):
         embedding_shape = None if self.embeddings is not None else (len(self.vocab), self.embedding_dim)
         with tf.variable_scope("words", reuse=False):
             _word_embeddings = tf.get_variable(initializer=self.embeddings,
@@ -72,7 +102,7 @@ class Model:
             word_embeddings = tf.nn.embedding_lookup(params=_word_embeddings,
                                                      ids=self.word_ids,
                                                      name="word_embeddings")
-        self.word_embeddings = tf.nn.dropout(word_embeddings, self.dropout_pl)
+        self.word_embeddings = word_embeddings if eval_only else tf.nn.dropout(word_embeddings, self.dropout_pl)
 
     def trainstep_op(self):
         with tf.variable_scope("train_step"):
@@ -94,7 +124,8 @@ class Model:
 
             grads_and_vars = optim.compute_gradients(self.loss)
             if self.clip_grad is not None:
-                grads_and_vars_clip = [[tf.clip_by_value(g, -self.clip_grad, self.clip_grad), v] for g, v in grads_and_vars]
+                grads_and_vars_clip = [[tf.clip_by_value(g, -self.clip_grad, self.clip_grad), v] for g, v in
+                                       grads_and_vars]
             else:
                 grads_and_vars_clip = grads_and_vars  # Leave it as is
             self.train_op = optim.apply_gradients(grads_and_vars_clip, global_step=self.global_step)
@@ -201,6 +232,7 @@ class Model:
         :param single_batch: A single batch where each slot contains a char-sequence.
         :return: tag_seq_list
         """
+
         def get_sent2id():
             return lambda sentence: sentence2id(sent=sentence,
                                                 word2id=self.vocab,
@@ -271,7 +303,7 @@ class Model:
             for i in range(len(sent)):
                 sent_res.append([sent[i], tag[i], tag_[i]])
             model_predict.append(sent_res)
-        epoch_num = str(epoch+1) if epoch is not None else 'test'
+        epoch_num = str(epoch + 1) if epoch is not None else 'test'
         label_path = os.path.join(self.result_path, 'label_' + epoch_num)
         metric_path = os.path.join(self.result_path, 'result_metric_' + epoch_num)
         for _ in conlleval(model_predict, label_path, metric_path):
@@ -305,15 +337,16 @@ class BiLSTM_CRF(Model):
         self.merged = None
         self.train_op = None
 
-    def build_graph(self):
-        self.add_placeholders()
-        self.lookup_layer_op()
-        self.biLSTM_layer_op()
-        self.pred_op()
-        self.loss_op()
-        self.trainstep_op()
+    def build_graph(self, eval_only=False):
+        self.add_placeholders(eval_only=eval_only)
+        self.lookup_layer_op(eval_only=eval_only)
+        self.biLSTM_layer_op(eval_only=eval_only)
+        self.pred_op(eval_only=eval_only)
+        if not eval_only:
+            self.loss_op()
+            self.trainstep_op()
 
-    def biLSTM_layer_op(self):
+    def biLSTM_layer_op(self, eval_only):
         with tf.variable_scope("bi-lstm"):
             cell_fw = LSTMCell(self.hidden_dim)
             cell_bw = LSTMCell(self.hidden_dim)
@@ -324,7 +357,8 @@ class BiLSTM_CRF(Model):
                 sequence_length=self.sequence_lengths,
                 dtype=tf.float32)
             output = tf.concat([output_fw_seq, output_bw_seq], axis=-1)
-            output = tf.nn.dropout(output, self.dropout_pl)
+            if not eval_only:
+                output = tf.nn.dropout(output, self.dropout_pl)
 
         with tf.variable_scope("proj"):
             W = tf.get_variable(name="W",
@@ -338,7 +372,7 @@ class BiLSTM_CRF(Model):
                                 dtype=tf.float32)
 
             s = tf.shape(output)
-            output = tf.reshape(output, [-1, 2*self.hidden_dim])
+            output = tf.reshape(output, [-1, 2 * self.hidden_dim])
             pred = tf.matmul(output, W) + b
 
             self.logits = tf.reshape(pred, [-1, s[1], self.num_tags])
@@ -355,14 +389,18 @@ class BiLSTM_CRF(Model):
 
         tf.summary.scalar("loss", self.loss)
 
-    def pred_op(self):
+    def pred_op(self, eval_only=False):
         if not self.CRF:
             self.labels_softmax_ = tf.argmax(self.logits, axis=-1)
             self.labels_softmax_ = tf.cast(self.labels_softmax_, tf.int32)
         else:
-            self.log_likelihood, self.transition_params = crf_log_likelihood(inputs=self.logits,
-                                                                             tag_indices=self.labels,
-                                                                             sequence_lengths=self.sequence_lengths)
+            if not eval_only:
+                self.log_likelihood, self.transition_params = crf_log_likelihood(inputs=self.logits,
+                                                                                 tag_indices=self.labels,
+                                                                                 sequence_lengths=self.sequence_lengths)
+
+            else:
+                self.transition_params = tf.get_variable("transitions", [self.num_tags, self.num_tags])
 
     @property
     def init_op(self):
@@ -381,12 +419,12 @@ class BiLSTM_CRF(Model):
 
         feed_dict = {self.word_ids: word_ids,
                      self.sequence_lengths: seq_len_list}
-        if labels is not None:
+        if labels is not None and self.labels is not None:
             labels_, _ = pad_sequences(labels, pad_mark=0)
             feed_dict[self.labels] = labels_
-        if lr is not None:
+        if lr is not None and self.lr_pl is not None:
             feed_dict[self.lr_pl] = lr
-        if dropout is not None:
+        if dropout is not None and self.dropout_pl is not None:
             feed_dict[self.dropout_pl] = dropout
 
         return feed_dict, seq_len_list
@@ -420,13 +458,15 @@ class BiDirectionalStackedLSTM_CRF(BiLSTM_CRF):
         super().__init__(args, embeddings, tag2label, vocab, paths, config)
         self._layer_num = args.num_rnn_layer
 
-    def biLSTM_layer_op(self):
+    def biLSTM_layer_op(self, eval_only=False):
         """
         Bi-(Stacked)LSTM layer
         :return:
         """
+
         def inner_cells():
-                return [LSTMCell(self.hidden_dim) for _ in range(self.layer_num)]
+            return [LSTMCell(self.hidden_dim) for _ in range(self.layer_num)]
+
         with tf.variable_scope("bi-stacked-lstm"):
             cell_fw = tf.nn.rnn_cell.MultiRNNCell(inner_cells())
             cell_bw = tf.nn.rnn_cell.MultiRNNCell(inner_cells())
@@ -437,7 +477,8 @@ class BiDirectionalStackedLSTM_CRF(BiLSTM_CRF):
                 sequence_length=self.sequence_lengths,
                 dtype=tf.float32)
             output = tf.concat([output_fw_seq, output_bw_seq], axis=-1)
-            output = tf.nn.dropout(output, self.dropout_pl)
+            if not eval_only:
+                output = tf.nn.dropout(output, self.dropout_pl)
 
         with tf.variable_scope("proj"):
             W = tf.get_variable(name="W",
@@ -467,6 +508,7 @@ class VariationalBiRNN_CRF(BiLSTM_CRF):
     Y. Gal, Z Ghahramani. "A Theoretically Grounded Application of Dropout in Recurrent Neural Networks".
     https://arxiv.org/abs/1512.05287
     """
+
     def __init__(self, args, embeddings, tag2label, vocab, paths, config):
         super().__init__(args, embeddings, tag2label, vocab, paths, config)
         if "cell_type" in args:
@@ -479,7 +521,7 @@ class VariationalBiRNN_CRF(BiLSTM_CRF):
         else:
             self._cell_type = LSTMCell
 
-    def lookup_layer_op(self):
+    def lookup_layer_op(self, *args, **kwargs):
         """
         This method does not create dropout layer for word embedding, as DropoutWrapper applies
         dropout for RNN inputs.
@@ -497,15 +539,18 @@ class VariationalBiRNN_CRF(BiLSTM_CRF):
                                                           ids=self.word_ids,
                                                           name="word_embeddings")
 
-    def biLSTM_layer_op(self):
+    def biLSTM_layer_op(self, eval_only=False):
         def get_cell():
-            return DropoutWrapper(self._cell_type(self.hidden_dim),
-                                  input_keep_prob=self.dropout_pl,
-                                  output_keep_prob=self.dropout_pl,
-                                  state_keep_prob=self.dropout_pl,
-                                  variational_recurrent=True,
-                                  dtype=tf.float32,
-                                  input_size=self.embedding_dim)
+            cell = self._cell_type(self.hidden_dim)
+            if not eval_only:
+                cell = DropoutWrapper(cell,
+                                      input_keep_prob=self.dropout_pl,
+                                      output_keep_prob=self.dropout_pl,
+                                      state_keep_prob=self.dropout_pl,
+                                      variational_recurrent=True,
+                                      dtype=tf.float32,
+                                      input_size=self.embedding_dim)
+            return cell
         with tf.variable_scope("variational-bi-rnn"):
             cell_fw, cell_bw = get_cell(), get_cell()
             (output_fw_seq, output_bw_seq), _ = tf.nn.bidirectional_dynamic_rnn(
@@ -554,32 +599,36 @@ class IDCNN_CRF(Model):
         self.dilation_rate = args.dilation
         self.n_repeat = args.num_repeat
 
-    def build_graph(self):
-        self.add_placeholders()
-        self.lookup_layer_op()
-        self.idcnn_layer_op()
-        self.pred_op()
-        self.loss_op()
-        self.trainstep_op()
+    def build_graph(self, eval_only=False):
+        self.add_placeholders(eval_only=eval_only)
+        self.lookup_layer_op(eval_only=eval_only)
+        self.idcnn_layer_op(eval_only=eval_only)
+        self.pred_op(eval_only=eval_only)
+        if not eval_only:
+            self.loss_op()
+            self.trainstep_op()
 
-    def add_placeholders(self):
+    def add_placeholders(self, eval_only=False):
         self.word_ids = tf.placeholder(tf.int32, shape=[None, None], name="word_ids")
         self.labels = tf.placeholder(tf.int32, shape=[None, None], name="labels")
         self.sequence_lengths = tf.placeholder(tf.int32, shape=[None], name="sequence_lengths")
+        if not eval_only:
+            self.dropout_pl = tf.placeholder(dtype=tf.float32, shape=[], name="dropout")
+            self.lr_pl = tf.placeholder(dtype=tf.float32, shape=[], name="lr")
 
-        self.dropout_pl = tf.placeholder(dtype=tf.float32, shape=[], name="dropout")
-        self.lr_pl = tf.placeholder(dtype=tf.float32, shape=[], name="lr")
-
-    def pred_op(self):
+    def pred_op(self, eval_only=False):
         if not self.CRF:
             self.labels_softmax_ = tf.argmax(self.logits, axis=-1)
             self.labels_softmax_ = tf.cast(self.labels_softmax_, tf.int32)
         else:
-            self.log_likelihood, self.transition_params = crf_log_likelihood(inputs=self.logits,
-                                                                             tag_indices=self.labels,
-                                                                             sequence_lengths=self.sequence_lengths)
+            if not eval_only:
+                self.log_likelihood, self.transition_params = crf_log_likelihood(inputs=self.logits,
+                                                                                 tag_indices=self.labels,
+                                                                                 sequence_lengths=self.sequence_lengths)
+            else:
+                self.transition_params = tf.get_variable("transitions", [self.num_tags, self.num_tags])
 
-    def idcnn_layer_op(self):
+    def idcnn_layer_op(self, eval_only=False):
         # self.word_embeddings [batch_size, max_time, embedding_dim]
         layer_input = tf.expand_dims(self.word_embeddings, axis=1)
         with tf.variable_scope("idcnn"):
@@ -588,7 +637,8 @@ class IDCNN_CRF(Model):
                                                shape=[1, self.filter_width, self.embedding_dim, self.num_filter])
                 layer_input = tf.nn.convolution(layer_input, input_filter,
                                                 padding="SAME", strides=[1, 1],
-                                                dilation_rate=None, name="input")  # [batch_size, 1, max_time, self.num_filter]
+                                                dilation_rate=None,
+                                                name="input")  # [batch_size, 1, max_time, self.num_filter]
                 """
                 tf.nn.conv2d(layer_input,
                              input_filter,
@@ -613,7 +663,8 @@ class IDCNN_CRF(Model):
                     conv_output_dim += self.num_filter
                 final_output = tf.concat(final_output, axis=-1)
                 final_output = tf.squeeze(final_output, axis=1)  # [batch_size, max_time, self.num_filter]
-                final_output = tf.nn.dropout(final_output, self.dropout_pl)
+                if not eval_only:
+                    final_output = tf.nn.dropout(final_output, self.dropout_pl)
             with tf.variable_scope("output_proj"):
                 conv_out_shape = tf.shape(final_output)
                 final_output = tf.reshape(final_output, shape=[-1, conv_output_dim])
@@ -674,12 +725,11 @@ class IDCNN_CRF(Model):
 
         feed_dict = {self.word_ids: word_ids,
                      self.sequence_lengths: seq_len_list}
-        if labels is not None:
+        if labels is not None and self.labels is not None:
             labels_, _ = pad_sequences(labels, pad_mark=0)
             feed_dict[self.labels] = labels_
-        if lr is not None:
+        if lr is not None and self.lr_pl is not None:
             feed_dict[self.lr_pl] = lr
-        if dropout is not None:
+        if dropout is not None and self.dropout_pl is not None:
             feed_dict[self.dropout_pl] = dropout
-
         return feed_dict, seq_len_list

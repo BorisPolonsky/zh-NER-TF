@@ -55,7 +55,7 @@ parser.add_argument('--pretrained_embedding',
                     help='Path to serialized pretrained embedding. By default it would be initialized randomly.')
 parser.add_argument('--embedding_dim', type=int, default=300, help='random init char embedding_dim')
 parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle training data before each epoch')
-parser.add_argument('--mode', type=str, default='demo', help='train/test/demo')
+parser.add_argument('--mode', type=str, default='demo', help='train/test/demo/export')
 parser.add_argument('--demo_model', type=str, default='1521112368', help='model for test and demo')
 parser.add_argument('--num_rnn_layer', type=int, default=1,
                     help='Number of RNN cells to be stacked.')
@@ -176,7 +176,7 @@ elif args.mode == 'test':
     paths['model_path'] = ckpt_file
     print("test data: {}".format(test_size))
     model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
-    model.build_graph()
+    model.build_graph(eval_only=True)
     label_list = model.test(test_data)
     label2tag = {label: tag for tag, label in model.tag2label.items()}
     for sentence_label, (sentence, sentence_tag_real) in zip(label_list, test_data):
@@ -214,7 +214,7 @@ elif args.mode == "predict":
     print(ckpt_file)
     paths['model_path'] = ckpt_file
     model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
-    model.build_graph()
+    model.build_graph(eval_only=True)
     saver = tf.train.Saver()
     test_path = os.path.join('.', args.test_data, 'test_data')
     with tf.Session(config=config) as sess:
@@ -250,7 +250,7 @@ elif args.mode == 'demo':
     print(ckpt_file)
     paths['model_path'] = ckpt_file
     model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
-    model.build_graph()
+    model.build_graph(eval_only=True)
     saver = tf.train.Saver()
     with tf.Session(config=config) as sess:
         print('============= demo =============')
@@ -272,3 +272,14 @@ elif args.mode == 'demo':
             except KeyboardInterrupt:
                 break
         print('See you next time!')
+elif args.mode == "export":
+    ckpt_file = tf.train.latest_checkpoint(model_path)
+    print(ckpt_file)
+    paths['model_path'] = ckpt_file
+    model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
+    model.build_graph(eval_only=True)
+    saver = tf.train.Saver()
+    with tf.Session(config=config) as sess:
+        print('============= demo =============')
+        saver.restore(sess, ckpt_file)
+        model.export(sess, os.path.join(output_path, "export"))
