@@ -113,7 +113,7 @@ else:
     embeddings = np.array(embedding, dtype='float32')
 
 # read corpus and get training data
-if args.mode not in ('demo', 'predict'):
+if args.mode not in ('demo', 'predict', 'export'):
     train_path = os.path.join('.', args.train_data, 'train_data')
     test_path = os.path.join('.', args.test_data, 'test_data')
     train_data = read_corpus(train_path)
