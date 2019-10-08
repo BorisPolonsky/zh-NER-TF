@@ -279,7 +279,9 @@ elif args.mode == "export":
     model = model_constructor(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph(eval_only=True)
     saver = tf.train.Saver()
+    label2tag = {v: k for k, v in tag2label.items()}
+    label_list = [label2tag[idx] for idx in range(len(tag2label))]
+    del label2tag
     with tf.Session(config=config) as sess:
-        print('============= demo =============')
         saver.restore(sess, ckpt_file)
-        model.export(sess, os.path.join(output_path, "export"))
+        model.export(sess, os.path.join(output_path, "export"), label_list)

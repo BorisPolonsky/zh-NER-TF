@@ -53,26 +53,29 @@ class Model:
         self.train_op = None
         self.global_step = None
 
-    def export(self, sess, export_dir):
+    def export(self, sess, export_dir, labels=None):
         """
         Export model as protobuf files that can be used in tensorflow/serving.
         N.B. build_graph() should be called first with `eval_only` specified as True before calling this method.
         :param sess: tf.Session(), with checkpoint to be exported restored.
         :param export_dir: Directory for exporting model.
+        :param labels: list of str. Map label_ids to labels (labels[label_id]) if specified. 
         :return: None
         """
         if self.CRF:
             label_ids = crf_decode(self.logits, self.transition_params, self.sequence_lengths)[0]
         else:
             label_ids = self.labels_softmax_
+        outputs = {"labels_ids": tf.saved_model.utils.build_tensor_info(label_ids)}
+        if labels is not None:
+            outputs["labels"] = tf.saved_model.utils.build_tensor_info(tf.contrib.lookup.index_to_string_table_from_tensor(tf.constant(labels)).lookup(tf.to_int64(label_ids)))
         prediction_signature = (
             tf.saved_model.signature_def_utils.build_signature_def(
                 inputs={
                     "input_ids": tf.saved_model.utils.build_tensor_info(self.word_ids),
                     "sequence_length": tf.saved_model.utils.build_tensor_info(self.sequence_lengths)
                 },
-                outputs={"labels_ids": tf.saved_model.utils.build_tensor_info(label_ids)
-                         },
+                outputs=outputs,
                 method_name=tf.saved_model.signature_constants.PREDICT_METHOD_NAME))
         builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
         builder.add_meta_graph_and_variables(sess, [tf.saved_model.tag_constants.SERVING],
