@@ -313,7 +313,7 @@ class Model:
             self.logger.info(_)
 
     @abstractmethod
-    def predict_one_batch(self, seqs):
+    def predict_one_batch(self, sess, seqs):
         pass
 
     @abstractmethod
